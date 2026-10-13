@@ -10,9 +10,11 @@ import com.geo.entity.Task;
 import com.geo.entity.TaskAi;
 import com.geo.entity.TaskQuestion;
 import com.geo.entity.TaskResult;
+import com.geo.entity.IntentWord;
 import com.geo.enums.AiPlatform;
 import com.geo.enums.ResultStatus;
 import com.geo.enums.TaskStatus;
+import com.geo.mapper.IntentWordMapper;
 import com.geo.mapper.TaskAiMapper;
 import com.geo.mapper.TaskMapper;
 import com.geo.mapper.TaskQuestionMapper;
@@ -73,6 +75,7 @@ public class TaskService {
     private final TaskAiMapper taskAiMapper;
     private final TaskQuestionMapper taskQuestionMapper;
     private final TaskResultMapper taskResultMapper;
+    private final IntentWordMapper intentWordMapper;
     private final ObjectMapper objectMapper;
     private final TaskScheduleService taskScheduleService;
     private final RestTemplate restTemplate;
@@ -96,6 +99,7 @@ public class TaskService {
      */
     public TaskService(TaskMapper taskMapper, TaskAiMapper taskAiMapper,
                        TaskQuestionMapper taskQuestionMapper, TaskResultMapper taskResultMapper,
+                       IntentWordMapper intentWordMapper,
                        ObjectMapper objectMapper,
                        @Lazy TaskScheduleService taskScheduleService,
                        RestTemplate restTemplate) {
@@ -103,6 +107,7 @@ public class TaskService {
         this.taskAiMapper = taskAiMapper;
         this.taskQuestionMapper = taskQuestionMapper;
         this.taskResultMapper = taskResultMapper;
+        this.intentWordMapper = intentWordMapper;
         this.objectMapper = objectMapper;
         this.taskScheduleService = taskScheduleService;
         this.restTemplate = restTemplate;
@@ -164,8 +169,8 @@ public class TaskService {
     public Task createTask(List<String> aiPlatforms, List<String> questions, String title,
                           String brandName, String productName, List<String> competitors,
                           String executionFrequency, Boolean retryOnFailure, String scope) {
-        return createTask(aiPlatforms, questions, title, brandName, productName, competitors,
-                executionFrequency, retryOnFailure, scope, null);
+        return createTask(aiPlatforms, questions, null, title, brandName, productName, competitors,
+                executionFrequency, retryOnFailure, scope, null, null);
     }
 
     /**
@@ -197,10 +202,10 @@ public class TaskService {
      * @return 创建好的Task实体
      */
     @Transactional
-    public Task createTask(List<String> aiPlatforms, List<String> questions, String title,
+    public Task createTask(List<String> aiPlatforms, List<String> questions, List<Long> wordIds, String title,
                           String brandName, String productName, List<String> competitors,
                           String executionFrequency, Boolean retryOnFailure, String scope,
-                          List<String> whitelistUrls) {
+                          List<String> whitelistUrls, String projectId) {
         validateAiPlatforms(aiPlatforms);
         validateQuestions(questions);
         validateBrandName(brandName);
@@ -208,6 +213,7 @@ public class TaskService {
         String taskNo = generateTaskNo();
         Task task = new Task();
         task.setTaskNo(taskNo);
+        task.setProjectId(projectId);
         task.setUserId("anonymous");
         task.setTitle(title);
         task.setStatus(TaskStatus.PENDING.name());
@@ -238,7 +244,7 @@ public class TaskService {
         taskMapper.insert(task);
 
         saveTaskAis(task.getId(), taskNo, aiPlatforms);
-        List<TaskQuestion> savedQuestions = saveTaskQuestions(task.getId(), taskNo, questions);
+        List<TaskQuestion> savedQuestions = saveTaskQuestions(task.getId(), taskNo, questions, wordIds);
         saveTaskCompetitors(task.getId(), taskNo, competitors);
 
         List<TaskResult> taskResults = createTaskResults(task.getId(), taskNo, aiPlatforms, savedQuestions, brandName);
@@ -474,14 +480,17 @@ public class TaskService {
      * - sortOrder记录用户原始顺序，前端展示和排名计算都要按这个顺序
      * - 返回保存后的实体（带自增ID），供后面createTaskResults关联使用
      */
-    private List<TaskQuestion> saveTaskQuestions(Long taskId, String taskNo, List<String> questions) {
+    private List<TaskQuestion> saveTaskQuestions(Long taskId, String taskNo, List<String> questions, List<Long> wordIds) {
         List<TaskQuestion> taskQuestions = new ArrayList<>();
         int order = 0;
-        for (String question : questions) {
+        for (int i = 0; i < questions.size(); i++) {
             TaskQuestion tq = new TaskQuestion();
             tq.setTaskId(taskId);
             tq.setTaskNo(taskNo);
-            tq.setQuestionText(question);
+            tq.setQuestionText(questions.get(i));
+            if (wordIds != null && i < wordIds.size() && wordIds.get(i) != null) {
+                tq.setWordId(wordIds.get(i));
+            }
             tq.setSortOrder(order++);
             taskQuestionMapper.insert(tq);
             taskQuestions.add(tq);
@@ -575,12 +584,26 @@ public class TaskService {
      * 【任务列表查询】
      * 设计思路：
      * - 按创建时间倒序，最新的在最前面
-     * - 兼容老数据回填：scope、questionCount、intentCount这些是后来加的字段，老数据可能为null
+     * - 兼容老数据回填：scope、questionCount、intentCount这些是后来加的字段，老数据可能为null/** 把一个项目下所有任务的 KPI 阈值批量更新 */
+    public int updateKpiByProjectId(String projectId, int kpi) {
+        if (projectId == null || projectId.isEmpty()) return 0;
+        if (kpi < 0) kpi = 0;
+        if (kpi > 100) kpi = 100;
+        com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<Task> uw =
+                new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<>();
+        uw.eq("project_id", projectId).set("kpi", kpi);
+        return taskMapper.update(null, uw);
+    }
+
+    /**
      *   这里不update DB，只在返回前给默认值，避免大量老数据迁移
      */
-    public List<Task> listTasks() {
+    public List<Task> listTasks(String projectId) {
         com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<Task> wrapper =
                 new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+        if (projectId != null && !projectId.isEmpty()) {
+            wrapper.eq("project_id", projectId);
+        }
         wrapper.orderByDesc("created_at");
         List<Task> tasks = taskMapper.selectList(wrapper);
         for (Task task : tasks) {
@@ -605,9 +628,12 @@ public class TaskService {
      * - 这是性能与一致性的平衡：终态任务大多数情况不用刷，少数异常情况才刷
      */
     @org.springframework.transaction.annotation.Transactional
-    public List<Task> listTasksWithProgressRefresh() {
+    public List<Task> listTasksWithProgressRefresh(String projectId) {
         com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<Task> wrapper =
                 new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+        if (projectId != null && !projectId.isEmpty()) {
+            wrapper.eq("project_id", projectId);
+        }
         wrapper.orderByDesc("created_at");
         List<Task> tasks = taskMapper.selectList(wrapper);
         for (Task task : tasks) {
@@ -776,6 +802,25 @@ public class TaskService {
         }
 
         List<TaskResult> results = taskResultMapper.selectByTaskNo(taskNo);
+
+        // 查询问题与意图词的关联，用于填充层级/标签/关键词
+        List<TaskQuestion> taskQuestions = taskQuestionMapper.selectByTaskNo(taskNo);
+        Map<Long, Long> questionWordMap = new HashMap<>();
+        Set<Long> wordIdSet = new HashSet<>();
+        for (TaskQuestion tq : taskQuestions) {
+            if (tq.getWordId() != null) {
+                questionWordMap.put(tq.getId(), tq.getWordId());
+                wordIdSet.add(tq.getWordId());
+            }
+        }
+        Map<Long, IntentWord> wordMap = new HashMap<>();
+        if (!wordIdSet.isEmpty()) {
+            List<IntentWord> words = intentWordMapper.selectBatchIds(wordIdSet);
+            for (IntentWord w : words) {
+                wordMap.put(w.getId(), w);
+            }
+        }
+
         List<TaskResultVO> voList = new ArrayList<>();
         for (TaskResult r : results) {
             boolean mentioned = false;
@@ -831,6 +876,18 @@ public class TaskService {
                     .sentiment(sentiment)
                     .sentimentSource(sentimentSource)
                     .build();
+
+            // 填充层级/标签/关键词（从关联的意图词获取）
+            Long wordId = questionWordMap.get(r.getTaskQuestionId());
+            if (wordId != null) {
+                IntentWord iw = wordMap.get(wordId);
+                if (iw != null) {
+                    vo.setLevel(iw.getLevel());
+                    vo.setTag(iw.getTag());
+                    vo.setKeyword(iw.getKeyword());
+                }
+            }
+
             voList.add(vo);
         }
         return voList;

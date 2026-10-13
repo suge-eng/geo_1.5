@@ -62,6 +62,12 @@ public class TaskResultVO {
     private String sentiment;
     // 情感分析的参考依据片段（前端可以展示"基于这句话判断为正面"）
     private String sentimentSource;
+    // 意图层级（认知层/种草层/甄选层/决策层/反馈层）
+    private String level;
+    // 意图标签
+    private String tag;
+    // 关键词
+    private String keyword;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -106,6 +112,12 @@ public class TaskResultVO {
     public void setSentiment(String sentiment) { this.sentiment = sentiment; }
     public String getSentimentSource() { return sentimentSource; }
     public void setSentimentSource(String sentimentSource) { this.sentimentSource = sentimentSource; }
+    public String getLevel() { return level; }
+    public void setLevel(String level) { this.level = level; }
+    public String getTag() { return tag; }
+    public void setTag(String tag) { this.tag = tag; }
+    public String getKeyword() { return keyword; }
+    public void setKeyword(String keyword) { this.keyword = keyword; }
 
     /** 创建Builder对象入口 */
     public static Builder builder() { return new Builder(); }
@@ -136,6 +148,9 @@ public class TaskResultVO {
         public Builder brandRanking(java.util.List<String> brandRanking) { vo.setBrandRanking(brandRanking); return this; }
         public Builder sentiment(String sentiment) { vo.setSentiment(sentiment); return this; }
         public Builder sentimentSource(String sentimentSource) { vo.setSentimentSource(sentimentSource); return this; }
+        public Builder level(String level) { vo.setLevel(level); return this; }
+        public Builder tag(String tag) { vo.setTag(tag); return this; }
+        public Builder keyword(String keyword) { vo.setKeyword(keyword); return this; }
         public TaskResultVO build() { return vo; }
     }
 }

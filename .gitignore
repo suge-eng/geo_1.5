@@ -63,6 +63,11 @@ edge_profile/
 *_screenshots/
 screenshots/
 edge_doubao_profiles/
+edge_deepseek_profiles/
+edge_kimi_profiles/
+edge_qianwen_profiles/
+edge_wenxin_profiles/
+edge_yuanbao_profiles/
 *.apk
 
 # Node.js

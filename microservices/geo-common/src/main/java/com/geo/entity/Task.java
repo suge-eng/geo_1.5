@@ -36,6 +36,9 @@ public class Task {
     // 任务业务编号（T+时间戳+UUID短码），给用户看的友好编号
     private String taskNo;
 
+    // 所属项目ID，任务按项目隔离
+    private String projectId;
+
     // 创建这个任务的用户ID，暂时写死anonymous（匿名），后续接用户系统再改
     private String userId;
 
@@ -58,6 +61,8 @@ public class Task {
 
     // 要分析的自主品牌名，比如"华为"
     private String brandName;
+    // 品牌覆盖率 KPI 阈值（0~100），低于该值的平台在报告里标记"覆盖不足"
+    private Integer kpi;
     // 具体单品名，比如"华为Mate 60 Pro"
     private String productName;
 
@@ -111,6 +116,8 @@ public class Task {
     public void setId(Long id) { this.id = id; }
     public String getTaskNo() { return taskNo; }
     public void setTaskNo(String taskNo) { this.taskNo = taskNo; }
+    public String getProjectId() { return projectId; }
+    public void setProjectId(String projectId) { this.projectId = projectId; }
     public String getUserId() { return userId; }
     public void setUserId(String userId) { this.userId = userId; }
     public String getTitle() { return title; }
@@ -129,6 +136,8 @@ public class Task {
     public void setTotalQuestionCount(Integer totalQuestionCount) { this.totalQuestionCount = totalQuestionCount; }
     public String getBrandName() { return brandName; }
     public void setBrandName(String brandName) { this.brandName = brandName; }
+    public Integer getKpi() { return kpi; }
+    public void setKpi(Integer kpi) { this.kpi = kpi; }
     public String getProductName() { return productName; }
     public void setProductName(String productName) { this.productName = productName; }
     public String getCompetitors() { return competitors; }

@@ -1,0 +1,159 @@
+@use './variables.scss' as *;
+
+:root {
+  --el-color-primary: #{$geo-primary};
+  --el-color-primary-light-3: #{$geo-primary-light-3};
+  --el-color-primary-light-5: #{$geo-primary-light-5};
+  --el-color-primary-light-7: #{$geo-primary-light-7};
+  --el-color-primary-light-8: #{$geo-primary-light-8};
+  --el-color-primary-light-9: #{$geo-primary-light-9};
+  --el-color-primary-dark-2: #{$geo-primary-dark-2};
+  --geo-sidebar-width: #{$sidebar-width};
+  --geo-topbar-height: #{$topbar-height};
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  color: #242932;
+  background: $content-bg;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: $geo-primary;
+  text-decoration: none;
+}
+
+/* AI 富文本 / Markdown 渲染区 */
+.markdown-body {
+  word-break: break-word;
+  line-height: 1.75;
+
+  p {
+    margin: 0 0 10px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin: 14px 0 8px;
+    font-weight: 600;
+    color: #1f2329;
+    line-height: 1.4;
+  }
+  h1 {
+    font-size: 18px;
+  }
+  h2 {
+    font-size: 16px;
+  }
+  h3 {
+    font-size: 15px;
+  }
+  h4,
+  h5,
+  h6 {
+    font-size: 14px;
+  }
+
+  ul,
+  ol {
+    margin: 0 0 10px;
+    padding-left: 20px;
+  }
+
+  li {
+    margin-bottom: 4px;
+  }
+
+  a {
+    color: $geo-primary;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  code {
+    padding: 1px 5px;
+    background: #f3f4f6;
+    border-radius: 4px;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 12px;
+    color: #d03b3b;
+  }
+
+  hr {
+    border: none;
+    border-top: 1px solid #eef0f4;
+    margin: 12px 0;
+  }
+}
+
+/* 细滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d4d8df;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #bcc2cc;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 通用页面卡片 */
+.page-card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+
+  .page-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1f2329;
+  }
+}
+
+/* 空状态占位 */
+.empty-hint {
+  padding: 48px 0;
+  text-align: center;
+  color: #9aa1aa;
+  font-size: 13px;
+}

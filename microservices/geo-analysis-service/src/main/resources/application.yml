@@ -20,7 +20,7 @@ spring:
 
   # ----- MySQL 数据源 -----
   datasource:
-    url: jdbc:mysql://localhost:3307/geo_backend?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://localhost:3308/geo_backend?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: geo               # 数据库账号
     password: geo123            # 数据库密码
     driver-class-name: com.mysql.cj.jdbc.Driver  # MySQL 8 驱动
@@ -29,7 +29,7 @@ spring:
   data:
     redis:
       host: localhost           # Redis 地址
-      port: 6380                # Redis 端口
+      port: 6381                # Redis 端口
       password: "123456"        # Redis 密码
       timeout: 10s              # 命令超时
 
@@ -52,6 +52,9 @@ mybatis-plus:
 
 # ===== 日志 =====
 logging:
+  charset:
+    console: UTF-8
+    file: UTF-8
   level:
     com.geo: DEBUG
 
@@ -61,7 +64,7 @@ geo:
     # 调用大模型生成报告所需的密钥与接口地址（阿里云百炼 DashScope 的 OpenAI 兼容接口）
     api-key: sk-34fbbe6fb8c94c41adb9990396b6c636
     api-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1
-    model: qwen3.7-plus-2026-05-26      # 使用的模型名称
+    model: deepseek-v4.1-flash    # 使用的模型名称
     timeout-seconds: 300                # 单次 AI 请求超时（秒）
     enabled: true                       # AI 能力总开关
     batch-size: 15                      # 批量处理大小

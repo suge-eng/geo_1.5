@@ -34,6 +34,8 @@ public class TaskQuestion {
 
     // 问题文本内容，比如"推荐几款拍照好的手机"
     private String questionText;
+    // 关联意图词ID（intent_word表id），用于展示层级/标签/关键词
+    private Long wordId;
     // 排序顺序（用户输入的顺序从0开始，竞对问题排999放最后）
     private Integer sortOrder;
 
@@ -50,6 +52,8 @@ public class TaskQuestion {
     public void setTaskNo(String taskNo) { this.taskNo = taskNo; }
     public String getQuestionText() { return questionText; }
     public void setQuestionText(String questionText) { this.questionText = questionText; }
+    public Long getWordId() { return wordId; }
+    public void setWordId(Long wordId) { this.wordId = wordId; }
     public Integer getSortOrder() { return sortOrder; }
     public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }
     public LocalDateTime getCreatedAt() { return createdAt; }

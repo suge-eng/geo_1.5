@@ -64,8 +64,9 @@ public class TaskController {
      * 列表页展示的字段里有一些是老版本没有的，先 enrich 回填默认值再返回，避免前端拿到 null。
      */
     @GetMapping("/list")
-    public ResponseEntity<Result<List<Task>>> listTasks() {
-        List<Task> tasks = taskService.listTasksWithProgressRefresh();
+    public ResponseEntity<Result<List<Task>>> listTasks(
+            @RequestParam(value = "projectId", required = false) String projectId) {
+        List<Task> tasks = taskService.listTasksWithProgressRefresh(projectId);
         for (Task task : tasks) {
             enrichTaskFields(task);
         }
@@ -74,6 +75,15 @@ public class TaskController {
                 .header(HttpHeaders.PRAGMA, "no-cache")
                 .header(HttpHeaders.EXPIRES, "0")
                 .body(Result.success(tasks));
+    }
+
+    /** 把一个项目下所有任务的 KPI 阈值批量更新 */
+    @PostMapping("/kpi")
+    public ResponseEntity<Result<Integer>> updateKpi(
+            @RequestParam(value = "projectId") String projectId,
+            @RequestParam(value = "kpi") int kpi) {
+        int rows = taskService.updateKpiByProjectId(projectId, kpi);
+        return ResponseEntity.ok(Result.success(rows));
     }
 
     /**
@@ -108,6 +118,7 @@ public class TaskController {
         Task task = taskService.createTask(
                 request.getAiPlatforms(),
                 request.getQuestions(),
+                request.getWordIds(),
                 request.getTitle(),
                 request.getBrandName(),
                 request.getProductName(),
@@ -115,7 +126,8 @@ public class TaskController {
                 request.getExecutionFrequency(),
                 request.getRetryOnFailure(),
                 request.getScope(),
-                request.getWhitelistUrls()
+                request.getWhitelistUrls(),
+                request.getProjectId()
         );
         enrichTaskFields(task);
         return Result.success("任务创建成功", task);
@@ -304,6 +316,7 @@ public class TaskController {
             @RequestParam("aiPlatforms") List<String> aiPlatforms,
             @RequestParam("title") String title,
             @RequestParam("brandName") String brandName,
+            @RequestParam(value = "projectId", required = false) String projectId,
             @RequestParam(value = "productName", required = false) String productName,
             @RequestParam(value = "competitors", required = false) List<String> competitors,
             @RequestParam(value = "executionFrequency", defaultValue = "single") String executionFrequency,
@@ -331,6 +344,7 @@ public class TaskController {
         Task task = taskService.createTask(
                 aiPlatforms,
                 questions,
+                null,
                 title,
                 brandName,
                 productName,
@@ -338,9 +352,9 @@ public class TaskController {
                 executionFrequency,
                 retryOnFailure,
                 scope,
-                whitelistUrls
+                whitelistUrls,
+                projectId
         );
-        enrichTaskFields(task);
         return Result.success("Excel任务创建成功", task);
     }
 

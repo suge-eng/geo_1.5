@@ -30,7 +30,7 @@ spring:
 
   # ----- MySQL 数据源 -----
   datasource:
-    url: jdbc:mysql://localhost:3307/geo_backend?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://localhost:3308/geo_backend?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: geo             # 数据库账号
     password: geo123          # 数据库密码
     driver-class-name: com.mysql.cj.jdbc.Driver  # MySQL 8 驱动
@@ -39,7 +39,7 @@ spring:
   data:
     redis:
       host: localhost         # Redis 地址
-      port: 6380              # Redis 端口
+      port: 6381              # Redis 端口
       password: "123456"      # Redis 密码
       timeout: 10s            # 命令超时
 
@@ -82,11 +82,11 @@ mybatis-plus:
 
 # ===== MinIO 对象存储连接配置 =====
 minio:
-  endpoint: http://localhost:9002        # MinIO 服务地址（服务端内部访问用）
+  endpoint: http://localhost:9003        # MinIO 服务地址（服务端内部访问用）
   access-key: minioadmin                 # 访问密钥（账号）
   secret-key: minioadmin123              # 访问密钥（密码）
   bucket: geo-bucket                     # 文件存放的桶名
-  public-endpoint: http://172.27.64.1:9002  # 对外暴露的下载地址
+  public-endpoint: http://172.27.64.1:9003  # 对外暴露的下载地址
 
 # ===== 日志 =====
 logging:

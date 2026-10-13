@@ -80,6 +80,18 @@ public class ApiProxyController {
         return doProxy(request, RPA_SERVICE);
     }
 
+    // /api/monitor/** -> 监测配置（意图定义等），暂由任务服务承载
+    @RequestMapping(value = "/api/monitor/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.PATCH})
+    public ResponseEntity<byte[]> proxyMonitor(HttpServletRequest request) {
+        return doProxy(request, TASK_SERVICE);
+    }
+
+    // /api/project/** -> 项目管理，由任务服务承载
+    @RequestMapping(value = "/api/project/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.PATCH})
+    public ResponseEntity<byte[]> proxyProject(HttpServletRequest request) {
+        return doProxy(request, TASK_SERVICE);
+    }
+
     /**
      * 真正执行转发的方法。
      *
@@ -92,11 +104,16 @@ public class ApiProxyController {
      */
     private ResponseEntity<byte[]> doProxy(HttpServletRequest request, String targetBase) {
         try {
-            // 拼目标地址：服务地址 + 原始路径；如有查询串（?a=1&b=2）也要原样带上
+            // 拼目标地址：服务地址 + 原始路径。
+            // ⚠️ multipart 请求不拼 query string：因为 getParameterMap() 会把 query 参数
+            //    也当作表单字段塞进 multipart body，如果 URL 上再带一遍，下游同一个参数
+            //    会收到两份，被 Spring 用逗号拼接（如 projectId 变成 "id,id"）。
             String requestUri = request.getRequestURI();
             String queryString = request.getQueryString();
             String targetUrl = targetBase + requestUri;
-            if (queryString != null && !queryString.isEmpty()) {
+            boolean isMultipartContentType = request.getContentType() != null
+                    && request.getContentType().toLowerCase().contains(MediaType.MULTIPART_FORM_DATA_VALUE);
+            if (queryString != null && !queryString.isEmpty() && !isMultipartContentType) {
                 targetUrl = targetUrl + "?" + queryString;
             }
 

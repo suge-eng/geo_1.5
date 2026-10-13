@@ -191,10 +191,26 @@ public class AnalysisReportResponse {
     public List<CitationPlatformRankingItem> getCitationPlatformRanking() { return citationPlatformRanking; }
     public void setCitationPlatformRanking(List<CitationPlatformRankingItem> citationPlatformRanking) { this.citationPlatformRanking = citationPlatformRanking; }
 
+    /** 每个 AI 平台上自主品牌展现的问题数（按问题去重，一个问题只算 1 次） */
+    private Map<String, Integer> platformSelfExposureCount;
+    public Map<String, Integer> getPlatformSelfExposureCount() { return platformSelfExposureCount; }
+    public void setPlatformSelfExposureCount(Map<String, Integer> platformSelfExposureCount) { this.platformSelfExposureCount = platformSelfExposureCount; }
+
     /** AI引用来源具体URL分布统计（哪篇文章被引用次数最多） */
     private List<CitationSourceDistributionItem> citationSourceDistribution;
     public List<CitationSourceDistributionItem> getCitationSourceDistribution() { return citationSourceDistribution; }
     public void setCitationSourceDistribution(List<CitationSourceDistributionItem> citationSourceDistribution) { this.citationSourceDistribution = citationSourceDistribution; }
+
+    /**
+     * 品牌覆盖率 KPI 阈值（0~100）。
+     * 设计思路：该值来源于任务 KPI 设置页面（MonitorConfig 中保存），
+     * 报告生成时会把它带过来，前端用来在 AI 平台覆盖率条形图上画一条红色参考线，
+     * 低于阈值的平台会被高亮提示"覆盖不足"。
+     */
+    private Integer kpiThreshold;
+    public Integer getKpiThreshold() { return kpiThreshold; }
+    public void setKpiThreshold(Integer kpiThreshold) { this.kpiThreshold = kpiThreshold; }
+
     public static Builder builder() { return new Builder(); }
 
     /**
@@ -237,8 +253,10 @@ public class AnalysisReportResponse {
         public Builder scoreLevel(String scoreLevel) { resp.scoreLevel = scoreLevel; return this; }
         public Builder globalTrends(GlobalTrends globalTrends) { resp.globalTrends = globalTrends; return this; }
         public Builder citationPlatformRanking(List<CitationPlatformRankingItem> citationPlatformRanking) { resp.citationPlatformRanking = citationPlatformRanking; return this; }
+        public Builder platformSelfExposureCount(Map<String, Integer> map) { resp.platformSelfExposureCount = map; return this; }
         public Builder citationSourceDistribution(List<CitationSourceDistributionItem> citationSourceDistribution) { resp.citationSourceDistribution = citationSourceDistribution; return this; }
         public Builder platformScoreCards(List<PlatformScoreCard> platformScoreCards) { resp.platformScoreCards = platformScoreCards; return this; }
+        public Builder kpiThreshold(Integer kpiThreshold) { resp.kpiThreshold = kpiThreshold; return this; }
         public AnalysisReportResponse build() { return resp; }
     }
 
@@ -544,6 +562,54 @@ public class AnalysisReportResponse {
         /** 每个平台的白名单引用匹配率 = 白名单匹配 / 总引用数 */
         private Map<String, Double> perPlatformWhitelistMatchRate;
 
+        /** 场景覆盖率：按意图标签为分母，看每个标签下问题的品牌展现占比是否达到 KPI 阈值，
+         *  达标的标签数 / 总标签数 × 100。值为 -1 表示未计算（比如没有标签数据）。 */
+        private double sceneCoverageRate = -1;
+        public double getSceneCoverageRate() { return sceneCoverageRate; }
+        public void setSceneCoverageRate(double sceneCoverageRate) { this.sceneCoverageRate = sceneCoverageRate; }
+
+        /** 对比选胜率：在"自有品牌+至少一个竞品同时出现"的对比场景下，自有品牌排第一的比例。
+         *  分母必须同时满足：自有品牌出现 AND 至少一个竞品出现。值为 -1 表示未计算（首次报告）。 */
+        private double comparisonFirstRate = -1;
+        public double getComparisonFirstRate() { return comparisonFirstRate; }
+        public void setComparisonFirstRate(double v) { this.comparisonFirstRate = v; }
+
+        /** 竞品替代率：当前对比选胜率 vs 上一份历史报告的对比选胜率的净增量。
+         *  正值表示我们从竞品那里抢到了首选份额；0 表示无历史或无变化。 */
+        private double replacementRate = 0;
+        public double getReplacementRate() { return replacementRate; }
+        public void setReplacementRate(double v) { this.replacementRate = v; }
+
+        /** 对比场景总数（自有+竞品同时出现的回答数，和 comparisonFirstRate 同分母） */
+        private int comparisonTotal = 0;
+        public int getComparisonTotal() { return comparisonTotal; }
+        public void setComparisonTotal(int v) { this.comparisonTotal = v; }
+
+        /** 竞品首选率：对比场景中竞品明确排第一的比例（%） */
+        private double competitorFirstRate = 0;
+        public double getCompetitorFirstRate() { return competitorFirstRate; }
+        public void setCompetitorFirstRate(double v) { this.competitorFirstRate = v; }
+
+        /** 条件化选择率：对比场景中 AI 不给明确首选、按场景/预算分情况推荐的比例（%） */
+        private double conditionalRate = 0;
+        public double getConditionalRate() { return conditionalRate; }
+        public void setConditionalRate(double v) { this.conditionalRate = v; }
+
+        /** 各意图标签下的品牌首选率（key=tagName, value=%） */
+        private Map<String, Double> intentComparisonRates;
+        /** 竞品共现率（key=竞品品牌名, value=共现率%）：分母=自主品牌出现的回答数，分子=该竞品也出现 */
+        private Map<String, Double> competitorCooccurrence;
+        public Map<String, Double> getIntentComparisonRates() { return intentComparisonRates; }
+        public void setIntentComparisonRates(Map<String, Double> v) { this.intentComparisonRates = v; }
+        public Map<String, Double> getCompetitorCooccurrence() { return competitorCooccurrence; }
+        public void setCompetitorCooccurrence(Map<String, Double> v) { this.competitorCooccurrence = v; }
+
+        /** AI 声量份额：按问题级别去重后，自有品牌提到的问题数 / 所有品牌（自有+竞对）提到的问题数之和 × 100。
+         *  分母不去重——同一问题同时提到华为和小米，分子算1，分母加2。值为 -1 表示未计算。 */
+        private double aiShareRate = -1;
+        public double getAiShareRate() { return aiShareRate; }
+        public void setAiShareRate(double aiShareRate) { this.aiShareRate = aiShareRate; }
+
         public String getMentionCount() { return mentionCount; }
         public void setMentionCount(String mentionCount) { this.mentionCount = mentionCount; }
         public double getCoverageRate() { return coverageRate; }
@@ -582,6 +648,13 @@ public class AnalysisReportResponse {
             public Builder mentionCount(String mentionCount) { metrics.mentionCount = mentionCount; return this; }
             public Builder coverageRate(double coverageRate) { metrics.coverageRate = coverageRate; return this; }
             public Builder firstRate(double firstRate) { metrics.firstRate = firstRate; return this; }
+            public Builder comparisonFirstRate(double v) { metrics.comparisonFirstRate = v; return this; }
+            public Builder replacementRate(double v) { metrics.replacementRate = v; return this; }
+            public Builder comparisonTotal(int v) { metrics.comparisonTotal = v; return this; }
+            public Builder competitorFirstRate(double v) { metrics.competitorFirstRate = v; return this; }
+            public Builder conditionalRate(double v) { metrics.conditionalRate = v; return this; }
+            public Builder intentComparisonRates(Map<String, Double> v) { metrics.intentComparisonRates = v; return this; }
+            public Builder competitorCooccurrence(Map<String, Double> v) { metrics.competitorCooccurrence = v; return this; }
             public Builder top3Rate(double top3Rate) { metrics.top3Rate = top3Rate; return this; }
             public Builder top5Rate(double top5Rate) { metrics.top5Rate = top5Rate; return this; }
             public Builder naturalRecommendationScore(int score) { metrics.naturalRecommendationScore = score; return this; }
@@ -594,6 +667,7 @@ public class AnalysisReportResponse {
             public Builder perPlatformWhitelistMatchCount(Map<String, Integer> map) { metrics.perPlatformWhitelistMatchCount = map; return this; }
             public Builder perPlatformTotalSourceCount(Map<String, Integer> map) { metrics.perPlatformTotalSourceCount = map; return this; }
             public Builder perPlatformWhitelistMatchRate(Map<String, Double> map) { metrics.perPlatformWhitelistMatchRate = map; return this; }
+            public Builder aiShareRate(double aiShareRate) { metrics.aiShareRate = aiShareRate; return this; }
             public ExposureMetrics build() { return metrics; }
         }
     }
@@ -614,6 +688,14 @@ public class AnalysisReportResponse {
         private String score;
         /** 较上次变化趋势 */
         private String trend;
+        /** 出现率（品牌覆盖率，%） */
+        private String appearanceRate;
+        /** 首选率（首位率，%） */
+        private String firstRate;
+        /** Top3 率（%） */
+        private String top3Rate;
+        /** 声量份额（AI 声量份额，%） */
+        private String aiShareRate;
 
         public int getRank() { return rank; }
         public void setRank(int rank) { this.rank = rank; }
@@ -625,6 +707,14 @@ public class AnalysisReportResponse {
         public void setScore(String score) { this.score = score; }
         public String getTrend() { return trend; }
         public void setTrend(String trend) { this.trend = trend; }
+        public String getAppearanceRate() { return appearanceRate; }
+        public void setAppearanceRate(String appearanceRate) { this.appearanceRate = appearanceRate; }
+        public String getFirstRate() { return firstRate; }
+        public void setFirstRate(String firstRate) { this.firstRate = firstRate; }
+        public String getTop3Rate() { return top3Rate; }
+        public void setTop3Rate(String top3Rate) { this.top3Rate = top3Rate; }
+        public String getAiShareRate() { return aiShareRate; }
+        public void setAiShareRate(String aiShareRate) { this.aiShareRate = aiShareRate; }
     }
 
     /**
@@ -842,4 +932,207 @@ public class AnalysisReportResponse {
     private List<PlatformScoreCard> platformScoreCards;
     public List<PlatformScoreCard> getPlatformScoreCards() { return platformScoreCards; }
     public void setPlatformScoreCards(List<PlatformScoreCard> platformScoreCards) { this.platformScoreCards = platformScoreCards; }
+
+    /**
+     * 【用户意图层级覆盖热力图】
+     *
+     * 设计思路：
+     * 横轴 = 任务中实际出现的意图层级（认知/种草/甄选/决策/反馈，动态取）
+     * 纵轴 = 所有品牌（自有 + 竞品，来源于 task.brandName + task.competitors）
+     * 每个格子 = 该品牌在该层级下的覆盖率（该层级有效回答中提到该品牌的比例）
+     */
+    public static class IntentHeatmap {
+        /** 横轴：意图层级列表，按在任务中出现的顺序排列 */
+        private List<String> levels;
+        /** 纵轴：品牌行列表 */
+        private List<BrandRow> brands;
+
+        /** 自有品牌在每个层级的详细指标（与 levels 一一对应） */
+        private List<SelfLevelMetric> selfLevelMetrics;
+
+        public List<String> getLevels() { return levels; }
+        public void setLevels(List<String> levels) { this.levels = levels; }
+        public List<BrandRow> getBrands() { return brands; }
+        public void setBrands(List<BrandRow> brands) { this.brands = brands; }
+        public List<SelfLevelMetric> getSelfLevelMetrics() { return selfLevelMetrics; }
+        public void setSelfLevelMetrics(List<SelfLevelMetric> selfLevelMetrics) { this.selfLevelMetrics = selfLevelMetrics; }
+
+        public static class BrandRow {
+            /** 品牌名 */
+            private String name;
+            /** 是否自主品牌 */
+            private boolean selfBrand;
+            /** 各层级覆盖率百分比，与 levels 一一对应；null 表示该层没有数据 */
+            private List<Double> values;
+
+            public String getName() { return name; }
+            public void setName(String name) { this.name = name; }
+            public boolean isSelfBrand() { return selfBrand; }
+            public void setSelfBrand(boolean selfBrand) { this.selfBrand = selfBrand; }
+            public List<Double> getValues() { return values; }
+            public void setValues(List<Double> values) { this.values = values; }
+        }
+
+        public static class SelfLevelMetric {
+            /** 层级名（如"认知层"） */
+            private String level;
+            /** 该层级下有效回答数（分母） */
+            private int total;
+            /** 自有品牌被提到的回答数（分子） */
+            private int mentionCount;
+            /** 覆盖率 % */
+            private double coverage;
+            /** 首位率 %（品牌首提的回答 / 被提到的回答） */
+            private double firstRate;
+            /** TOP3 率 %（品牌在前三推荐的回答 / 被提到的回答） */
+            private double top3Rate;
+
+            public String getLevel() { return level; }
+            public void setLevel(String level) { this.level = level; }
+            public int getTotal() { return total; }
+            public void setTotal(int total) { this.total = total; }
+            public int getMentionCount() { return mentionCount; }
+            public void setMentionCount(int mentionCount) { this.mentionCount = mentionCount; }
+            public double getCoverage() { return coverage; }
+            public void setCoverage(double coverage) { this.coverage = coverage; }
+            public double getFirstRate() { return firstRate; }
+            public void setFirstRate(double firstRate) { this.firstRate = firstRate; }
+            public double getTop3Rate() { return top3Rate; }
+            public void setTop3Rate(double top3Rate) { this.top3Rate = top3Rate; }
+        }
+    }
+
+    private IntentHeatmap intentHeatmap;
+    public IntentHeatmap getIntentHeatmap() { return intentHeatmap; }
+    public void setIntentHeatmap(IntentHeatmap intentHeatmap) { this.intentHeatmap = intentHeatmap; }
+
+    /**
+     * 【高价值覆盖缺口清单 — 按意图标签聚合】
+     *
+     * 设计思路：
+     * 每行 = 一个 intent_word.tag（意图标签），聚合该标签下所有问题的数据，
+     * 对比自有品牌 vs 竞品的覆盖率，找出"竞品覆盖好但自有没覆盖"的缺口。
+     * 优先级：自有覆盖率越低 + 竞品覆盖率越高 → 越优先补。
+     */
+    public static class GapTagItem {
+        /** 意图标签名，如"拍照需求"、"品牌对比" */
+        private String tagName;
+        /** 该标签所属的意图层级，如"种草层" */
+        private String level;
+        /** 自有品牌覆盖率(%) */
+        private double selfCoverage;
+        /** 任一竞品覆盖率(%) */
+        private double competitorCoverage;
+        /** 优先级：P0 / P1 / P2 */
+        private String priority;
+        /** 该标签下聚合了多少个问题 */
+        private int questionCount;
+        /** 各品牌在该标签下的覆盖率(%)，key=品牌名 */
+        private java.util.Map<String, Double> brandCoverages;
+        /** 该标签按"场景覆盖口径"是否达标：问题级展现率（有品牌展现的问题数/问题总数）≥ KPI 阈值 */
+        private boolean scenePassed;
+
+        public String getTagName() { return tagName; }
+        public void setTagName(String tagName) { this.tagName = tagName; }
+        public String getLevel() { return level; }
+        public void setLevel(String level) { this.level = level; }
+        public double getSelfCoverage() { return selfCoverage; }
+        public void setSelfCoverage(double selfCoverage) { this.selfCoverage = selfCoverage; }
+        public double getCompetitorCoverage() { return competitorCoverage; }
+        public void setCompetitorCoverage(double competitorCoverage) { this.competitorCoverage = competitorCoverage; }
+        public String getPriority() { return priority; }
+        public void setPriority(String priority) { this.priority = priority; }
+        public int getQuestionCount() { return questionCount; }
+        public void setQuestionCount(int questionCount) { this.questionCount = questionCount; }
+        public java.util.Map<String, Double> getBrandCoverages() { return brandCoverages; }
+        public void setBrandCoverages(java.util.Map<String, Double> brandCoverages) { this.brandCoverages = brandCoverages; }
+        public boolean isScenePassed() { return scenePassed; }
+        public void setScenePassed(boolean scenePassed) { this.scenePassed = scenePassed; }
+    }
+
+    private List<GapTagItem> gapTagList;
+    public List<GapTagItem> getGapTagList() { return gapTagList; }
+    public void setGapTagList(List<GapTagItem> gapTagList) { this.gapTagList = gapTagList; }
+
+    /**
+     * 【模型对比 — 单平台核心指标行】
+     *
+     * 设计思路：每个 AI 平台（豆包/Kimi/文心...）一行，
+     * 聚合该平台上所有有效回答，计算自主品牌的核心表现指标。
+     */
+    public static class PlatformCoreMetric {
+        /** 平台代码，如 doubao / kimi / wenxin */
+        private String platformCode;
+        /** 平台显示名，如 豆包 / Kimi / 文心一言 */
+        private String platformName;
+        /** 该平台的有效回答数（样本量） */
+        private int totalAnswers;
+        /** 品牌在该平台的自然覆盖率 (%) */
+        private double coverRate;
+        /** 品牌在该平台的首位率 (%) */
+        private double firstRate;
+        /** 品牌在该平台的 TOP3 率 (%) */
+        private double top3Rate;
+        /** 品牌在该平台的平均排名（1=首位, 2=第二, 未出现计 N+1） */
+        private double avgRank;
+        /** 品牌在该平台的排名一致性 (%) — 方差倒算，方差越小一致性越高 */
+        private double stabilityRate;
+        /** 该平台正面情感回答占比 (%) — 回答被标记为 positive 的比例 */
+        private double positiveRate;
+
+        public String getPlatformCode() { return platformCode; }
+        public void setPlatformCode(String platformCode) { this.platformCode = platformCode; }
+        public String getPlatformName() { return platformName; }
+        public void setPlatformName(String platformName) { this.platformName = platformName; }
+        public int getTotalAnswers() { return totalAnswers; }
+        public void setTotalAnswers(int totalAnswers) { this.totalAnswers = totalAnswers; }
+        public double getCoverRate() { return coverRate; }
+        public void setCoverRate(double coverRate) { this.coverRate = coverRate; }
+        public double getFirstRate() { return firstRate; }
+        public void setFirstRate(double firstRate) { this.firstRate = firstRate; }
+        public double getTop3Rate() { return top3Rate; }
+        public void setTop3Rate(double top3Rate) { this.top3Rate = top3Rate; }
+        public double getAvgRank() { return avgRank; }
+        public void setAvgRank(double avgRank) { this.avgRank = avgRank; }
+        public double getStabilityRate() { return stabilityRate; }
+        public void setStabilityRate(double stabilityRate) { this.stabilityRate = stabilityRate; }
+        public double getPositiveRate() { return positiveRate; }
+        public void setPositiveRate(double positiveRate) { this.positiveRate = positiveRate; }
+    }
+
+    /** 各平台核心指标表 */
+    private List<PlatformCoreMetric> platformCoreMetrics;
+    public List<PlatformCoreMetric> getPlatformCoreMetrics() { return platformCoreMetrics; }
+    public void setPlatformCoreMetrics(List<PlatformCoreMetric> platformCoreMetrics) { this.platformCoreMetrics = platformCoreMetrics; }
+
+    /**
+     * 模型对比顶部三张 KPI 卡片
+     *   - topCoverPlatform   覆盖率最高的平台
+     *   - topFirstPlatform   首位率最高的平台
+     *   - topStablePlatform  排名一致性最高的平台
+     */
+    public static class TopPlatformCard {
+        private String title;       // "覆盖最高平台" / "首位率最高平台" / "最稳定平台"
+        private String platformName; // 平台显示名，如 "Deepseek"
+        private double value;        // 指标值（百分比或分数）
+        private String unit;         // 如 "%" / "分"
+        private String desc;         // 描述，如 "自然出现率"
+
+        public String getTitle() { return title; }
+        public void setTitle(String title) { this.title = title; }
+        public String getPlatformName() { return platformName; }
+        public void setPlatformName(String platformName) { this.platformName = platformName; }
+        public double getValue() { return value; }
+        public void setValue(double value) { this.value = value; }
+        public String getUnit() { return unit; }
+        public void setUnit(String unit) { this.unit = unit; }
+        public String getDesc() { return desc; }
+        public void setDesc(String desc) { this.desc = desc; }
+    }
+
+    /** 顶部三张 KPI 卡片 */
+    private List<TopPlatformCard> topPlatformCards;
+    public List<TopPlatformCard> getTopPlatformCards() { return topPlatformCards; }
+    public void setTopPlatformCards(List<TopPlatformCard> topPlatformCards) { this.topPlatformCards = topPlatformCards; }
+
 }

@@ -12,6 +12,10 @@ import com.geo.enums.ResultStatus;
 import com.geo.mapper.TaskReportMapper;
 import com.geo.mapper.TaskResultMapper;
 import com.geo.mapper.TaskMapper;
+import com.geo.mapper.TaskQuestionMapper;
+import com.geo.mapper.IntentWordMapper;
+import com.geo.entity.TaskQuestion;
+import com.geo.entity.IntentWord;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import cn.hutool.http.HttpRequest;
@@ -104,6 +108,8 @@ public class AnalysisService {
     private final TaskResultMapper taskResultMapper;
     private final TaskReportMapper taskReportMapper;
     private final ObjectMapper objectMapper;
+    private final TaskQuestionMapper taskQuestionMapper;
+    private final IntentWordMapper intentWordMapper;
     private final Executor taskExecutor;
     private final RedisTemplate<String, String> redisTemplate;
 
@@ -143,12 +149,16 @@ public class AnalysisService {
                            TaskResultMapper taskResultMapper,
                            TaskReportMapper taskReportMapper,
                            ObjectMapper objectMapper,
+                           TaskQuestionMapper taskQuestionMapper,
+                           IntentWordMapper intentWordMapper,
                            @Qualifier("taskExecutor") Executor taskExecutor,
                            RedisTemplate<String, String> redisTemplate) {
         this.taskMapper = taskMapper;
         this.taskResultMapper = taskResultMapper;
         this.taskReportMapper = taskReportMapper;
         this.objectMapper = objectMapper;
+        this.taskQuestionMapper = taskQuestionMapper;
+        this.intentWordMapper = intentWordMapper;
         this.taskExecutor = taskExecutor;
         this.redisTemplate = redisTemplate;
     }
@@ -418,9 +428,12 @@ public class AnalysisService {
                 ? batchAnalyzeBrandRankings(validResults, selfBrand, competitorBrands, aiProgress, aiSentimentMap)
                 : new HashMap<>();
 
+        log.info("AI分析完成, 开始组装报告品牌指标... aiBrandRankings.size={}", aiBrandRankings.size());
         if (progressCallback != null) progressCallback.accept(75);
 
+        long t0 = System.currentTimeMillis();
         Map<String, BrandMetrics> brandMetricsMap = analyzeBrandData(validResults, selfBrand, competitorBrands, aiBrandRankings);
+        log.info("  analyzeBrandData 耗时={}ms, 品牌数={}", System.currentTimeMillis() - t0, brandMetricsMap.size());
         BrandMetrics productMetrics = !productName.isEmpty()
                 ? analyzeBrandData(validResults, productName, new ArrayList<>(), aiBrandRankings).get(productName)
                 : null;
@@ -429,35 +442,63 @@ public class AnalysisService {
         int selfMentionCount = competitiveCounts[0];
         int competitorMentionCount = competitiveCounts[1];
 
-        MetricGroup topMetrics = buildTopMetrics(selfBrand, brandMetricsMap, validCount);
+        t0 = System.currentTimeMillis(); MetricGroup topMetrics = buildTopMetrics(selfBrand, brandMetricsMap, validCount); log.info("  buildTopMetrics 耗时={}ms", System.currentTimeMillis() - t0);
         MetricGroup productMetricsGroup = buildProductMetrics(productName, productMetrics, validCount);
         List<MetricGroup> sideMetrics = buildSideMetrics(selfBrand, brandMetricsMap, validCount);
-        List<ChartWidget> charts = buildCharts(validResults, selfBrand, competitorBrands);
-        List<RankingWidget> rankings = buildRankings(brandMetricsMap, validResults);
+        t0 = System.currentTimeMillis(); List<ChartWidget> charts = buildCharts(validResults, selfBrand, competitorBrands); log.info("  buildCharts 耗时={}ms", System.currentTimeMillis() - t0);
+        t0 = System.currentTimeMillis(); List<RankingWidget> rankings = buildRankings(brandMetricsMap, validResults); log.info("  buildRankings 耗时={}ms", System.currentTimeMillis() - t0);
 
+        log.info("核心指标/图表/排名组装完成");
         if (progressCallback != null) progressCallback.accept(85);
 
-        BrandComparisonTable brandComparison = buildBrandComparisonTable(selfBrand, competitorBrands, brandMetricsMap, validResults, aiBrandRankings);
-        Map<String, BrandComparisonTable> perPlatformBrandComparison = buildPerPlatformBrandComparison(
-                validResults, selfBrand, competitorBrands, aiBrandRankings);
-        Map<String, Integer> perPlatformSelfMentionCount = computePerPlatformSelfMentionCount(validResults, selfBrand, aiBrandRankings);
-        int[] posRep = computePositiveReputationCounts(validResults, selfBrand, aiBrandRankings, aiSentimentMap);
+        t0 = System.currentTimeMillis(); BrandComparisonTable brandComparison = buildBrandComparisonTable(selfBrand, competitorBrands, brandMetricsMap, validResults, aiBrandRankings); log.info("  buildBrandComparisonTable 耗时={}ms", System.currentTimeMillis() - t0);
+        t0 = System.currentTimeMillis(); Map<String, BrandComparisonTable> perPlatformBrandComparison = buildPerPlatformBrandComparison(validResults, selfBrand, competitorBrands, aiBrandRankings); log.info("  buildPerPlatformBrandComparison 耗时={}ms", System.currentTimeMillis() - t0);
+        t0 = System.currentTimeMillis(); Map<String, Integer> perPlatformSelfMentionCount = computePerPlatformSelfMentionCount(validResults, selfBrand, aiBrandRankings); log.info("  computePerPlatformSelfMentionCount 耗时={}ms", System.currentTimeMillis() - t0);
+        t0 = System.currentTimeMillis(); int[] posRep = computePositiveReputationCounts(validResults, selfBrand, aiBrandRankings, aiSentimentMap); log.info("  computePositiveReputationCounts 耗时={}ms", System.currentTimeMillis() - t0);
         int posPositive = posRep[0];
         int posMentioned = posRep[1];
 
-        List<String> whitelistUrls = parseWhitelistUrls(task.getWhitelistUrls());
+        t0 = System.currentTimeMillis(); List<String> whitelistUrls = parseWhitelistUrls(task.getWhitelistUrls()); log.info("  parseWhitelistUrls 耗时={}ms", System.currentTimeMillis() - t0);
         Map<String, Integer> perPlatformWhitelistMatchCount = new LinkedHashMap<>();
         Map<String, Integer> perPlatformTotalSourceCount = new LinkedHashMap<>();
         Map<String, Double> perPlatformWhitelistMatchRate = new LinkedHashMap<>();
         if (whitelistUrls != null && !whitelistUrls.isEmpty()) {
-            computeWhitelistStats(validResults, whitelistUrls, perPlatformWhitelistMatchCount, perPlatformTotalSourceCount, perPlatformWhitelistMatchRate);
+            t0 = System.currentTimeMillis(); computeWhitelistStats(validResults, whitelistUrls, perPlatformWhitelistMatchCount, perPlatformTotalSourceCount, perPlatformWhitelistMatchRate); log.info("  computeWhitelistStats 耗时={}ms", System.currentTimeMillis() - t0);
         }
 
-        List<AnalysisReportResponse.CompetitionRankingItem> competitionRanking = buildCompetitionRanking(selfBrand, competitorBrands, brandComparison);
-        AiSummary aiSummary = buildAiSummary(task, results, brandMetricsMap, selfBrand, competitorBrands, validCount);
-        ExposureMetrics exposureMetrics = buildExposureMetrics(brandMetricsMap.get(selfBrand), validCount, selfMentionCount, competitorMentionCount, perPlatformSelfMentionCount, posPositive, posMentioned,
-                perPlatformWhitelistMatchCount, perPlatformTotalSourceCount, perPlatformWhitelistMatchRate);
-        AnalysisReportResponse.KeywordCloud keywordCloud = buildKeywordCloud(validResults);
+        t0 = System.currentTimeMillis(); List<AnalysisReportResponse.CompetitionRankingItem> competitionRanking = buildCompetitionRanking(selfBrand, competitorBrands, brandComparison); log.info("  buildCompetitionRanking 耗时={}ms", System.currentTimeMillis() - t0);
+        t0 = System.currentTimeMillis(); AiSummary aiSummary = buildAiSummary(task, results, brandMetricsMap, selfBrand, competitorBrands, validCount); log.info("  buildAiSummary 耗时={}ms", System.currentTimeMillis() - t0);
+        t0 = System.currentTimeMillis(); ExposureMetrics exposureMetrics = buildExposureMetrics(brandMetricsMap.get(selfBrand), validCount, selfMentionCount, competitorMentionCount, perPlatformSelfMentionCount, posPositive, posMentioned,
+                competitorBrands, perPlatformWhitelistMatchCount, perPlatformTotalSourceCount, perPlatformWhitelistMatchRate, brandMetricsMap, selfBrand, validResults);
+
+        // 竞品替代率：比上一份历史报告的对比选胜率净增量
+        try {
+            List<TaskReport> prevReports = taskReportMapper.selectByTaskNo(taskNo);
+            // prevReports 已按 reportDate 倒序，第 0 条可能是刚插入的（如果历史保存发生在这之前），也可能还没插入
+            AnalysisReportResponse prevResp = null;
+            if (prevReports != null && !prevReports.isEmpty()) {
+                // 找最新的一条作为"上一份"
+                TaskReport prevTr = prevReports.get(0);
+                if (prevTr.getReportJson() != null && !prevTr.getReportJson().isEmpty()) {
+                    prevResp = objectMapper.readValue(prevTr.getReportJson(), AnalysisReportResponse.class);
+                }
+            }
+            double prevCompFirst = -1;
+            if (prevResp != null && prevResp.getExposureMetrics() != null) {
+                prevCompFirst = prevResp.getExposureMetrics().getComparisonFirstRate();
+            }
+            double currCompFirst = exposureMetrics.getComparisonFirstRate();
+            double replacementRate = 0;
+            if (prevCompFirst >= 0 && currCompFirst >= 0) {
+                replacementRate = Math.max(0, Math.round((currCompFirst - prevCompFirst) * 10) / 10.0);
+            }
+            exposureMetrics.setReplacementRate(replacementRate);
+            log.info("  竞品替代率 curr={}% prev={}% replacement={}%", currCompFirst, prevCompFirst, replacementRate);
+        } catch (Exception e) {
+            log.warn("计算竞品替代率失败: {}", e.getMessage());
+            exposureMetrics.setReplacementRate(0);
+        } log.info("  buildExposureMetrics 耗时={}ms", System.currentTimeMillis() - t0);
+        t0 = System.currentTimeMillis(); AnalysisReportResponse.KeywordCloud keywordCloud = buildKeywordCloud(validResults); log.info("  buildKeywordCloud 耗时={}ms", System.currentTimeMillis() - t0);
 
         if (progressCallback != null) progressCallback.accept(92);
 
@@ -494,6 +535,8 @@ public class AnalysisService {
         List<AnalysisReportResponse.PlatformScoreCard> platformScoreCards = buildPlatformScoreCardsFromPerPlatform(
                 perPlatformBrandComparison, selfBrand, platforms.stream().map(p -> normalizeAiPlatformCode(p)).filter(Objects::nonNull).collect(Collectors.toList()));
 
+        log.info("comparison/exposure/summary/keywordCloud 全部完成，开始组装最终 report 对象...");
+        t0 = System.currentTimeMillis();
         AnalysisReportResponse report = AnalysisReportResponse.builder()
                 .taskNo(taskNo)
                 .title(task.getTitle() != null ? task.getTitle() : taskNo)
@@ -519,10 +562,31 @@ public class AnalysisService {
                 .exposureMetrics(exposureMetrics)
                 .competitionRanking(competitionRanking)
                 .keywordCloud(keywordCloud)
+                .platformSelfExposureCount(perPlatformSelfMentionCount)
                 .platformScoreCards(platformScoreCards)
+                .kpiThreshold(task.getKpi() != null ? task.getKpi() : 10)
                 .aiSentimentMap(aiSentimentJson)
                 .build();
 
+        List<AnalysisReportResponse.PlatformCoreMetric> platformCoreMetrics = computePerPlatformMetrics(validResults, selfBrand, competitorBrands, aiSentimentMap);
+        List<AnalysisReportResponse.TopPlatformCard> topPlatformCards = buildTopPlatformCards(platformCoreMetrics);
+        report.setPlatformCoreMetrics(platformCoreMetrics);
+        report.setTopPlatformCards(topPlatformCards);
+        // 热力图 + 缺口清单（builder 遗漏，用 setter 补）
+        report.setIntentHeatmap(computeIntentHeatmap(task, validResults));
+        report.setGapTagList(computeGapTagList(task, validResults, task.getKpi()));
+
+        // 场景覆盖率：统一口径（回答级），复用 gapTagList 的 scenePassed
+        List<AnalysisReportResponse.GapTagItem> _gapList = report.getGapTagList();
+        int _totalTags = _gapList != null ? _gapList.size() : 0;
+        int _passedTags = 0;
+        if (_gapList != null) for (AnalysisReportResponse.GapTagItem _g : _gapList) if (_g.isScenePassed()) _passedTags++;
+        double _sceneRate = _totalTags > 0 ? Math.round(_passedTags * 1000.0 / _totalTags) / 10.0 : -1;
+        exposureMetrics.setSceneCoverageRate(_sceneRate);
+        log.info("  场景覆盖率(统一口径回答级): {} / {} = {}%", _passedTags, _totalTags, _sceneRate);
+
+        log.info("开始 JSON 序列化...");
+        t0 = System.currentTimeMillis();
         try {
             String reportJson = objectMapper.writeValueAsString(report);
             task.setReportJson(reportJson);
@@ -741,6 +805,8 @@ public class AnalysisService {
         private int top5Count;
         private int totalAnswers;
         private int naturalRecommendationCount;
+        /** 按 taskQuestionId 去重的 Set：哪些问题提到了这个品牌 */
+        private final Set<Long> mentionedQuestionIds = new HashSet<>();
 
         public String getBrandName() { return brandName; }
         public void setBrandName(String brandName) { this.brandName = brandName; }
@@ -825,6 +891,7 @@ public class AnalysisService {
                 brandPositions = extractBrandPositions(combinedText, allBrands);
             }
 
+            Long qid = result.getTaskQuestionId();
             for (Map.Entry<String, BrandMetrics> entry : metricsMap.entrySet()) {
                 String brand = entry.getKey();
                 BrandMetrics metrics = entry.getValue();
@@ -834,6 +901,7 @@ public class AnalysisService {
                 if (position != null) {
                     mentionedInAnswer = true;
                     metrics.setMentionCount(metrics.getMentionCount() + 1);
+                    if (qid != null) metrics.mentionedQuestionIds.add(qid);
                     if (position == 1) {
                         metrics.setFirstCount(metrics.getFirstCount() + 1);
                     }
@@ -847,6 +915,7 @@ public class AnalysisService {
                     if (containsBrandName(combinedText, brand)) {
                         mentionedInAnswer = true;
                         metrics.setMentionCount(metrics.getMentionCount() + 1);
+                        if (qid != null) metrics.mentionedQuestionIds.add(qid);
                     }
                 }
 
@@ -1195,8 +1264,9 @@ public class AnalysisService {
         return new int[]{selfCount, compCount};
     }
 
-    private ExposureMetrics buildExposureMetrics(BrandMetrics selfBrandMetrics, int validCount, int selfMentionCount, int competitorMentionCount, Map<String, Integer> perPlatformSelfMentionCount, int posPositive, int posMentioned,
-                                                 Map<String, Integer> perPlatformWhitelistMatchCount, Map<String, Integer> perPlatformTotalSourceCount, Map<String, Double> perPlatformWhitelistMatchRate) {
+    private ExposureMetrics buildExposureMetrics(BrandMetrics selfBrandMetrics, int validCount, int selfMentionCount, int competitorMentionCount, Map<String, Integer> perPlatformSelfMentionCount, int posPositive, int posMentioned, List<String> competitorBrands,
+                                                 Map<String, Integer> perPlatformWhitelistMatchCount, Map<String, Integer> perPlatformTotalSourceCount, Map<String, Double> perPlatformWhitelistMatchRate,
+                                                 Map<String, BrandMetrics> brandMetricsMap, String selfBrand, List<TaskResult> validResults) {
         int total = selfMentionCount + competitorMentionCount;
         int competitiveScore = 0;
         if (total > 0) {
@@ -1219,9 +1289,11 @@ public class AnalysisService {
                     .mentionCount("0/0")
                     .coverageRate(0)
                     .firstRate(0)
+                    .comparisonFirstRate(-1)
                     .top3Rate(0)
                     .top5Rate(0)
                     .naturalRecommendationScore(0)
+                    .aiShareRate(-1)
                     .naturalRecommendationSub("0/0")
                     .competitiveScore(competitiveScore)
                     .competitiveSub(competitiveSub)
@@ -1235,16 +1307,154 @@ public class AnalysisService {
         }
         int mentionCount = selfBrandMetrics.getMentionCount();
         double coverageRate = (mentionCount * 100.0) / validCount;
+
+        // AI 声量份额 (按 questionText 去重)
+        double aiShareRate = -1;
+        if (brandMetricsMap != null && !brandMetricsMap.isEmpty() && selfBrand != null && validResults != null) {
+            Map<String, Set<String>> brandQs = new HashMap<>();
+            for (String b : brandMetricsMap.keySet()) brandQs.put(b, new HashSet<>());
+            for (TaskResult r : validResults) {
+                String ans = r.getAnswerText();
+                String qt = r.getQuestionText();
+                if (ans == null || ans.isEmpty() || qt == null) continue;
+                for (String b : brandMetricsMap.keySet()) {
+                    if (containsBrandName(ans, b)) brandQs.get(b).add(qt);
+                }
+            }
+            int selfQ = brandQs.getOrDefault(selfBrand, Collections.emptySet()).size();
+            int totalQ = 0;
+            for (Set<String> s : brandQs.values()) totalQ += s.size();
+            if (totalQ > 0) {
+                aiShareRate = Math.round((selfQ * 1000.0 / totalQ)) / 10.0;
+            }
+            log.info("  AI声量份额 selfBrand={} selfQ={} totalQ={} result={}%", selfBrand, selfQ, totalQ, aiShareRate);
+        }
+
         double firstRate = selfBrandMetrics.getFirstRate();
         double top3Rate = selfBrandMetrics.getTop3Rate();
         double top5Rate = selfBrandMetrics.getTop5Rate();
         int naturalScore = selfBrandMetrics.getNaturalRecommendationScore();
         int naturalCount = selfBrandMetrics.getNaturalRecommendationCount();
 
+        // 构建 questionId → List<tagName> 映射，用于按意图标签分组的对比选胜率
+        Map<Long, List<String>> qIdToTags = new HashMap<>();
+        try {
+            List<TaskQuestion> tqs = taskQuestionMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<TaskQuestion>()
+                    .in("id", validResults.stream().map(r -> r.getTaskQuestionId()).filter(java.util.Objects::nonNull).distinct().toArray()));
+            java.util.Set<Long> allWordIds = new HashSet<>();
+            for (TaskQuestion tq : tqs) {
+                if (tq.getWordId() != null) allWordIds.add(tq.getWordId());
+            }
+            Map<Long, String> widToTag = new HashMap<>();
+            if (!allWordIds.isEmpty()) {
+                List<IntentWord> iws = intentWordMapper.selectList(
+                    new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<IntentWord>().in("id", allWordIds));
+                for (IntentWord iw : iws) widToTag.put(iw.getId(), iw.getTag());
+            }
+            for (TaskQuestion tq : tqs) {
+                List<String> tags = new ArrayList<>();
+                if (tq.getWordId() != null) {
+                    String tag = widToTag.get(tq.getWordId());
+                    if (tag != null && !tag.isEmpty()) tags.add(tag);
+                }
+                qIdToTags.put(tq.getId(), tags);
+            }
+        } catch (Exception e) {
+            log.warn("构建 questionTagMap 失败: {}", e.getMessage());
+        }
+
+        // 对比选胜率：在"自有品牌+至少一个竞品同时出现"的回答中，自有排第一的比例
+        double comparisonFirstRate = -1;
+        int comparisonTotal = 0;
+        int comparisonFirst = 0;
+        int competitorFirst = 0;
+        int conditionalCount = 0;
+        Map<String, int[]> intentCompStats = new LinkedHashMap<>(); // tagName -> [total, selfFirst]
+        if (competitorBrands != null && !competitorBrands.isEmpty() && validResults != null && selfBrand != null) {
+            for (TaskResult tr : validResults) {
+                String ans = tr.getAnswerText();
+                if (ans == null || ans.isEmpty()) continue;
+                boolean selfHit = containsBrandName(ans, selfBrand);
+                boolean compHit = false;
+                for (String cb : competitorBrands) {
+                    if (containsBrandName(ans, cb)) { compHit = true; break; }
+                }
+                if (selfHit && compHit) {
+                    comparisonTotal++;
+                    int selfPos = ans.indexOf(selfBrand);
+                    int minCompPos = Integer.MAX_VALUE;
+                    String topComp = null;
+                    for (String cb : competitorBrands) {
+                        int p = ans.indexOf(cb);
+                        if (p >= 0 && p < minCompPos) { minCompPos = p; topComp = cb; }
+                    }
+                    boolean selfFirst = selfPos >= 0 && selfPos < minCompPos;
+                    boolean compFirst = selfPos >= 0 && minCompPos >= 0 && minCompPos < selfPos;
+                    if (selfFirst) comparisonFirst++;
+                    else if (compFirst) competitorFirst++;
+                    else conditionalCount++;
+                    // 按意图标签分组统计（从 taskQuestion.wordId 匹配 intentWord.tag）
+                    Long qId = tr.getTaskQuestionId();
+                    if (qId != null) {
+                        List<String> tags = qIdToTags.get(qId);
+                        if (tags != null) {
+                            for (String tag : tags) {
+                                intentCompStats.computeIfAbsent(tag, k -> new int[2])[0]++;
+                                if (selfFirst) intentCompStats.computeIfAbsent(tag, k -> new int[2])[1]++;
+                            }
+                        }
+                    }
+                }
+            }
+            if (comparisonTotal > 0) {
+                comparisonFirstRate = Math.round((comparisonFirst * 1000.0 / comparisonTotal)) / 10.0;
+            }
+            log.info("  对比选胜率 selfBrand={} total={} selfFirst={} compFirst={} conditional={} rate={}%", selfBrand, comparisonTotal, comparisonFirst, competitorFirst, conditionalCount, comparisonFirstRate);
+        }
+        double competitorFirstRate = comparisonTotal > 0 ? Math.round((competitorFirst * 1000.0 / comparisonTotal)) / 10.0 : 0;
+        double conditionalRate = comparisonTotal > 0 ? Math.round((conditionalCount * 1000.0 / comparisonTotal)) / 10.0 : 0;
+        Map<String, Double> intentCompRates = new LinkedHashMap<>();
+        for (Map.Entry<String, int[]> e : intentCompStats.entrySet()) {
+            int[] v = e.getValue();
+            if (v[0] > 0) intentCompRates.put(e.getKey(), Math.round((v[1] * 1000.0 / v[0])) / 10.0);
+        }
+
+        // 竞品共现率：分母=自有品牌出现的回答数，分子=每个竞品也出现
+        Map<String, Double> cooccurrenceMap = new LinkedHashMap<>();
+        if (selfMentionCount > 0 && competitorBrands != null && !competitorBrands.isEmpty() && validResults != null) {
+            Map<String, Integer> coCounts = new LinkedHashMap<>();
+            for (String cb : competitorBrands) coCounts.put(cb, 0);
+            for (TaskResult tr : validResults) {
+                String ans = tr.getAnswerText();
+                if (ans == null || ans.isEmpty()) continue;
+                if (containsBrandName(ans, selfBrand)) {
+                    for (String cb : competitorBrands) {
+                        if (containsBrandName(ans, cb)) {
+                            coCounts.merge(cb, 1, Integer::sum);
+                        }
+                    }
+                }
+            }
+            List<Map.Entry<String, Integer>> sortedCo = new ArrayList<>(coCounts.entrySet());
+            sortedCo.sort((a, b) -> b.getValue() - a.getValue());
+            for (Map.Entry<String, Integer> e : sortedCo) {
+                cooccurrenceMap.put(e.getKey(), Math.round((e.getValue() * 1000.0 / selfMentionCount)) / 10.0);
+            }
+            log.info("  竞品共现率 selfMentionCount={} map={}", selfMentionCount, cooccurrenceMap);
+        }
+
         return ExposureMetrics.builder()
                 .mentionCount(mentionCount + "/" + validCount)
                 .coverageRate(Math.round(coverageRate * 10) / 10.0)
+                .aiShareRate(aiShareRate)
                 .firstRate(Math.round(firstRate * 10) / 10.0)
+                .comparisonFirstRate(comparisonFirstRate)
+                .comparisonTotal(comparisonTotal)
+                .competitorFirstRate(competitorFirstRate)
+                .conditionalRate(conditionalRate)
+                .intentComparisonRates(intentCompRates)
+                .competitorCooccurrence(cooccurrenceMap)
                 .top3Rate(Math.round(top3Rate * 10) / 10.0)
                 .top5Rate(Math.round(top5Rate * 10) / 10.0)
                 .naturalRecommendationScore(naturalScore)
@@ -1265,19 +1475,14 @@ public class AnalysisService {
         if (validResults == null || selfBrand == null || selfBrand.isEmpty()) {
             return result;
         }
-        Map<Long, List<String>> rankingMap = aiBrandRankings != null ? aiBrandRankings : new HashMap<>();
+        String brandLower = selfBrand.toLowerCase();
         for (TaskResult r : validResults) {
             if (r == null) continue;
             String platformCode = normalizeAiPlatformCode(r.getAiPlatform());
             if (platformCode == null) continue;
-            boolean mentioned = false;
-            List<String> aiRanking = rankingMap.get(r.getId());
-            if (aiRanking != null && !aiRanking.isEmpty()) {
-                mentioned = aiRanking.contains(selfBrand);
-            } else {
-                String answerText = r.getAnswerText() != null ? r.getAnswerText() : "";
-                mentioned = answerText.toLowerCase().contains(selfBrand.toLowerCase());
-            }
+            // 跟 TaskService 的 "展现对勾" 判断逻辑完全一致：直接在 answerText 里搜品牌名
+            String answerText = r.getAnswerText() != null ? r.getAnswerText().toLowerCase() : "";
+            boolean mentioned = answerText.contains(brandLower);
             if (mentioned) {
                 result.merge(platformCode, 1, Integer::sum);
             }
@@ -1485,13 +1690,25 @@ public class AnalysisService {
         }
 
         ComparisonRow compRow = null;
+        ComparisonRow coverRow = null;
+        ComparisonRow firstRow = null;
+        ComparisonRow top3Row = null;
         for (ComparisonRow r : brandComparison.getRows()) {
-            if ("品牌竞争力".equals(r.getMetric())) {
-                compRow = r;
-                break;
-            }
+            String m = r.getMetric();
+            if ("品牌竞争力".equals(m)) compRow = r;
+            else if ("品牌覆盖率".equals(m)) coverRow = r;
+            else if ("首位率".equals(m)) firstRow = r;
+            else if ("前三率".equals(m)) top3Row = r;
         }
         if (compRow == null || compRow.getValues() == null) return items;
+
+        java.util.function.Function<ComparisonRow, String[]> rowToArr = (row) -> {
+            if (row == null || row.getValues() == null) return new String[0];
+            return row.getValues().toArray(new String[0]);
+        };
+        String[] coverArr = rowToArr.apply(coverRow);
+        String[] firstArr = rowToArr.apply(firstRow);
+        String[] top3Arr = rowToArr.apply(top3Row);
 
         List<String> brandNames = brandComparison.getColumns().subList(1, brandComparison.getColumns().size());
         List<Double> scores = new ArrayList<>();
@@ -1523,6 +1740,14 @@ public class AnalysisService {
             } else {
                 it.setScore(String.format("%.2f", rawScore));
             }
+                        // 补充出现率/首选率/Top3/声量份额（从 brandComparison 对应行取值）
+            String coverVal = idx < coverArr.length ? coverArr[idx] : "-";
+            String firstVal = idx < firstArr.length ? firstArr[idx] : "-";
+            String top3Val = idx < top3Arr.length ? top3Arr[idx] : "-";
+            it.setAppearanceRate(coverVal);
+            it.setFirstRate(firstVal);
+            it.setTop3Rate(top3Val);
+            it.setAiShareRate(coverVal); // 声量份额暂用覆盖率近似
             items.add(it);
         }
 
@@ -2183,9 +2408,13 @@ public class AnalysisService {
                                      int validCount) {
         AiSummary summary = new AiSummary();
 
-        if (aiEnabled && aiApiKey != null && !aiApiKey.isEmpty() && !"your-api-key-here".equals(aiApiKey)) {
+        // TODO: AI总结暂时关闭，先让报告能生成完
+        if (false && aiEnabled && aiApiKey != null && !aiApiKey.isEmpty() && !"your-api-key-here".equals(aiApiKey)) {
             try {
+                log.info("开始AI总结生成...");
+                long ts = System.currentTimeMillis();
                 String aiContent = callAiForSummary(task, results, metricsMap, selfBrand, competitorBrands, validCount);
+                log.info("AI总结生成完成, 耗时={}ms, 内容长度={}", System.currentTimeMillis() - ts, aiContent != null ? aiContent.length() : 0);
                 summary.setContent(aiContent);
                 summary.setHighlights(extractHighlightsFromContent(aiContent, metricsMap, selfBrand));
                 summary.setSuggestions(extractSuggestionsFromContent(aiContent, metricsMap, selfBrand));
@@ -2476,7 +2705,8 @@ public class AnalysisService {
             return cloud;
         }
 
-        if (aiEnabled && aiApiKey != null && !aiApiKey.isEmpty() && !"your-api-key-here".equals(aiApiKey)) {
+        // TODO: AI总结暂时关闭，先让报告能生成完
+        if (false && aiEnabled && aiApiKey != null && !aiApiKey.isEmpty() && !"your-api-key-here".equals(aiApiKey)) {
             try {
                 return buildKeywordCloudByAi(validResults);
             } catch (Exception e) {
@@ -3330,4 +3560,467 @@ public class AnalysisService {
                 .platformScoreCards(globalPlatformScoreCards)
                 .build();
     }
+
+    /**
+     * 【用户意图层级覆盖热力图计算】
+     *
+     * 设计思路：
+     * 横轴 = 任务中实际出现的意图层级（从 task_question → intent_word.level 取，动态）
+     * 纵轴 = 所有品牌（task.brandName 自有 + task.competitors 竞品 JSON 列表）
+     * 每个格子 = 该品牌在该层级下的覆盖率(%)
+     *   分母 = 该层级下所有有效回答数（task_result 中 status=SUCCESS 的）
+     *   分子 = 这些回答中 answerText 包含该品牌名的回答数
+     */
+    private AnalysisReportResponse.IntentHeatmap computeIntentHeatmap(Task task, List<TaskResult> validResults) {
+        AnalysisReportResponse.IntentHeatmap heatmap = new AnalysisReportResponse.IntentHeatmap();
+        if (task == null || validResults == null || validResults.isEmpty()) return heatmap;
+
+        String selfBrand = task.getBrandName();
+        if (selfBrand == null || selfBrand.isEmpty()) return heatmap;
+
+        // 固定排序：认知 -> 种草 -> 甄选 -> 决策 -> 反馈（层级名需兼容"X"和"X层"两种写法）
+        List<String> LEVEL_ORDER = Arrays.asList("认知", "种草", "甄选", "决策", "反馈");
+
+        List<TaskQuestion> taskQuestions = taskQuestionMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<TaskQuestion>()
+                        .eq("task_no", task.getTaskNo()));
+        if (taskQuestions == null || taskQuestions.isEmpty()) return heatmap;
+
+        Set<Long> wordIds = taskQuestions.stream().map(TaskQuestion::getWordId).filter(Objects::nonNull).collect(Collectors.toSet());
+        if (wordIds.isEmpty()) return heatmap;
+        List<IntentWord> words = intentWordMapper.selectBatchIds(wordIds);
+        Map<Long, IntentWord> wordMap = new HashMap<>();
+        if (words != null) for (IntentWord w : words) wordMap.put(w.getId(), w);
+
+        Map<String, IntentWord> questionToWord = new HashMap<>();
+        for (TaskQuestion tq : taskQuestions) {
+            if (tq.getWordId() != null && wordMap.containsKey(tq.getWordId())) {
+                questionToWord.put(tq.getQuestionText(), wordMap.get(tq.getWordId()));
+            }
+        }
+
+        // 竞品收集
+        List<String> competitorBrands = new ArrayList<>();
+        String cjson = task.getCompetitors();
+        if (cjson != null && !cjson.isEmpty()) {
+            try {
+                List<String> cs = objectMapper.readValue(cjson, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+                for (String cb : cs) if (cb != null && !cb.isEmpty()) competitorBrands.add(cb);
+            } catch (Exception e) { log.warn("解析 competitors JSON 失败: {}", cjson); }
+        }
+
+        List<String> allBrands = new ArrayList<>();
+        allBrands.add(selfBrand);
+        for (String cb : competitorBrands) if (!cb.equals(selfBrand)) allBrands.add(cb);
+
+        // 动态收集：该任务实际出现的层级（去重后按固定顺序排序）
+        Set<String> rawLevels = new LinkedHashSet<>();
+        for (IntentWord iw : questionToWord.values()) {
+            if (iw.getLevel() != null && !iw.getLevel().isEmpty()) rawLevels.add(iw.getLevel());
+        }
+        List<String> levels = new ArrayList<>();
+        for (String lv : LEVEL_ORDER) {
+            if (rawLevels.contains(lv) || rawLevels.contains(lv + "层")) {
+                String matched = rawLevels.contains(lv) ? lv : lv + "层";
+                if (!levels.contains(matched)) levels.add(matched);
+            }
+        }
+        // 兜底：万一有固定序列外的层级，追加到末尾
+        for (String lv : rawLevels) {
+            String bare = lv.endsWith("层") ? lv.substring(0, lv.length() - 1) : lv;
+            if (!LEVEL_ORDER.contains(bare) && !levels.contains(lv)) levels.add(lv);
+        }
+        if (levels.isEmpty()) return heatmap;
+
+        // level -> brand -> [total, mention]
+        Map<String, Map<String, int[]>> levelBrandStats = new LinkedHashMap<>();
+        // level -> [total, selfMention, selfFirst, selfTop3]
+        Map<String, int[]> levelSelfStats = new LinkedHashMap<>();
+        for (String lv : levels) {
+            Map<String, int[]> m = new LinkedHashMap<>();
+            for (String b : allBrands) m.put(b, new int[2]);
+            levelBrandStats.put(lv, m);
+            levelSelfStats.put(lv, new int[4]);
+        }
+
+        for (TaskResult r : validResults) {
+            if (!"SUCCESS".equals(r.getStatus())) continue;
+            String qt = r.getQuestionText();
+            String ans = r.getAnswerText();
+            if (qt == null || ans == null) continue;
+            IntentWord iw = questionToWord.get(qt);
+            if (iw == null || iw.getLevel() == null) continue;
+            String level = iw.getLevel();
+            Map<String, int[]> brandStats = levelBrandStats.get(level);
+            int[] selfArr = levelSelfStats.get(level);
+            if (brandStats == null || selfArr == null) continue;
+            for (String b : allBrands) {
+                brandStats.get(b)[0]++;
+                if (containsBrandName(ans, b)) brandStats.get(b)[1]++;
+            }
+            selfArr[0]++;
+            if (containsBrandName(ans, selfBrand)) {
+                selfArr[1]++;
+                List<Integer> posList = new ArrayList<>();
+                for (String b : allBrands) {
+                    int pos = ans.toLowerCase().indexOf(b.toLowerCase());
+                    posList.add(pos >= 0 ? pos : Integer.MAX_VALUE);
+                }
+                Collections.sort(posList);
+                int selfPos = ans.toLowerCase().indexOf(selfBrand.toLowerCase());
+                int rank = 1;
+                for (Integer pp : posList) {
+                    if (pp == Integer.MAX_VALUE) break;
+                    if (pp == selfPos) break;
+                    rank++;
+                }
+                if (rank == 1) selfArr[2]++;
+                if (rank <= 3) selfArr[3]++;
+            }
+        }
+
+        List<AnalysisReportResponse.IntentHeatmap.BrandRow> brandRows = new ArrayList<>();
+        for (String brand : allBrands) {
+            boolean isSelf = brand.equals(selfBrand);
+            AnalysisReportResponse.IntentHeatmap.BrandRow row = new AnalysisReportResponse.IntentHeatmap.BrandRow();
+            row.setName(brand);
+            row.setSelfBrand(isSelf);
+            List<Double> values = new ArrayList<>();
+            for (String lv : levels) {
+                int[] s = levelBrandStats.get(lv).get(brand);
+                double rate = s[0] > 0 ? Math.round(s[1] * 1000.0 / s[0]) / 10.0 : 0;
+                values.add(rate);
+            }
+            row.setValues(values);
+            brandRows.add(row);
+        }
+
+        List<AnalysisReportResponse.IntentHeatmap.SelfLevelMetric> slmList = new ArrayList<>();
+        for (String lv : levels) {
+            int[] s = levelSelfStats.get(lv);
+            AnalysisReportResponse.IntentHeatmap.SelfLevelMetric m = new AnalysisReportResponse.IntentHeatmap.SelfLevelMetric();
+            m.setLevel(lv); m.setTotal(s[0]); m.setMentionCount(s[1]);
+            m.setCoverage(s[0] > 0 ? Math.round(s[1] * 1000.0 / s[0]) / 10.0 : 0);
+            m.setFirstRate(s[1] > 0 ? Math.round(s[2] * 1000.0 / s[1]) / 10.0 : 0);
+            m.setTop3Rate(s[1] > 0 ? Math.round(s[3] * 1000.0 / s[1]) / 10.0 : 0);
+            slmList.add(m);
+        }
+        heatmap.setLevels(levels);
+        heatmap.setBrands(brandRows);
+        heatmap.setSelfLevelMetrics(slmList);
+        log.info("  意图层级热力图: levels={}, brands={}, selfMetrics={}", levels.size(), brandRows.size(), slmList.size());
+        return heatmap;
+    }
+
+    /**
+     * 【高价值覆盖缺口清单 — 按意图标签聚合】
+     *
+     * 设计思路：
+     *   对每个意图标签（intent_word.tag），聚合它下面所有问题的数据：
+     *     分母 = 该标签下所有问题的有效回答总数
+     *     自有覆盖率 = 提到 brandName 的回答数 / 分母
+     *     竞品覆盖率 = 任一 competitor 品牌被提到的回答数 / 分母
+     *   优先级规则：
+     *     P0  自有=0% 且 竞品>=50%
+     *     P1  自有<10% 且 竞品>=50%
+     *     P2  自有<20% 且 竞品>=30%
+     *     其他不进清单（自有覆盖率已经不低的不需要补）
+     *   排序：先按优先级 P0>P1>P2，同级按（竞品覆盖率-自有覆盖率）差值降序
+     */
+    private List<AnalysisReportResponse.GapTagItem> computeGapTagList(Task task, List<TaskResult> validResults, Integer kpiFromTask) {
+        List<AnalysisReportResponse.GapTagItem> result = new ArrayList<>();
+        if (task == null || validResults == null || validResults.isEmpty()) return result;
+
+        // KPI 阈值：分母=回答数（统一口径），该 tag 下 selfCoverage（回答级）≥ kpiThreshold 就算达标
+        double kpiThreshold = (kpiFromTask != null ? kpiFromTask : 10) / 100.0;
+
+        String selfBrand = task.getBrandName();
+        List<String> competitors = new ArrayList<>();
+        String cjson = task.getCompetitors();
+        if (cjson != null && !cjson.isEmpty()) {
+            try {
+                List<String> cs = objectMapper.readValue(cjson, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+                for (String cb : cs) if (cb != null && !cb.isEmpty()) competitors.add(cb);
+            } catch (Exception e) { log.warn("解析 competitors JSON 失败: {}", cjson); }
+        }
+
+        // task_question → wordId
+        List<TaskQuestion> taskQuestions = taskQuestionMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<TaskQuestion>()
+                        .eq("task_no", task.getTaskNo()));
+        if (taskQuestions == null || taskQuestions.isEmpty()) return result;
+
+        // wordId → {tag, level}
+        Set<Long> wordIds = taskQuestions.stream().map(TaskQuestion::getWordId).filter(Objects::nonNull).collect(Collectors.toSet());
+        if (wordIds.isEmpty()) return result;
+        List<IntentWord> words = intentWordMapper.selectBatchIds(wordIds);
+        Map<Long, IntentWord> wordMap = new HashMap<>();
+        if (words != null) for (IntentWord w : words) wordMap.put(w.getId(), w);
+
+        // questionText → IntentWord
+        Map<String, IntentWord> questionToWord = new HashMap<>();
+        for (TaskQuestion tq : taskQuestions) {
+            if (tq.getWordId() != null && wordMap.containsKey(tq.getWordId())) {
+                questionToWord.put(tq.getQuestionText(), wordMap.get(tq.getWordId()));
+            }
+        }
+
+        // tag → {totalAnswers, selfMentions, competitorMentions, questionSet}
+        // allBrands 顺序：先自有品牌，再用户选的竞品
+        List<String> allBrands = new ArrayList<>();
+        allBrands.add(selfBrand);
+        allBrands.addAll(competitors);
+
+        // tag -> int[0]=totalAnswers, int[1]=competitorAnyMentions
+        Map<String, int[]> tagStats = new HashMap<>();
+        Map<String, Map<String, Integer>> tagBrandMentions = new HashMap<>();
+        Map<String, String> tagToLevel = new HashMap<>();
+        Map<String, Set<String>> tagToQuestions = new HashMap<>();
+        // 场景覆盖口径用：tag → 该标签下有自主品牌展现的去重问题文本集合
+        Map<String, Set<String>> tagToExposedQuestions = new HashMap<>();
+
+        for (TaskResult r : validResults) {
+            if (!"SUCCESS".equals(r.getStatus())) continue;
+            if (selfBrand == null || selfBrand.isEmpty()) continue;
+            String qt = r.getQuestionText();
+            String ans = r.getAnswerText();
+            if (qt == null || ans == null) continue;
+            IntentWord iw = questionToWord.get(qt);
+            if (iw == null || iw.getTag() == null || iw.getTag().isEmpty()) continue;
+            String tag = iw.getTag();
+            tagStats.computeIfAbsent(tag, k -> new int[2])[0]++;
+            tagToLevel.putIfAbsent(tag, iw.getLevel());
+            tagToQuestions.computeIfAbsent(tag, k -> new HashSet<>()).add(qt);
+            Map<String, Integer> bm = tagBrandMentions.computeIfAbsent(tag, k -> new HashMap<>());
+            for (String brand : allBrands) {
+                if (containsBrandName(ans, brand)) {
+                    bm.merge(brand, 1, Integer::sum);
+                }
+            }
+            boolean anyComp = false;
+            for (String cb2 : competitors) {
+                if (containsBrandName(ans, cb2)) { anyComp = true; break; }
+            }
+            if (anyComp) tagStats.get(tag)[1]++;
+        }
+
+        for (Map.Entry<String, int[]> e : tagStats.entrySet()) {
+            String tag = e.getKey();
+            int total = e.getValue()[0];
+            int compAny = e.getValue()[1];
+            if (total == 0) continue;
+            Map<String, Integer> bm = tagBrandMentions.getOrDefault(tag, Collections.emptyMap());
+
+            // 各品牌单独覆盖率（保持 allBrands 顺序）
+            Map<String, Double> brandCoverages = new LinkedHashMap<>();
+            for (String brand : allBrands) {
+                int mentions = bm.getOrDefault(brand, 0);
+                double rate = Math.round(mentions * 1000.0 / total) / 10.0;
+                brandCoverages.put(brand, rate);
+            }
+
+            double selfRate = brandCoverages.getOrDefault(selfBrand, 0.0);
+            // competitorCoverage：该标签下至少一个竞品出现的回答比例
+            double compRate = Math.round(compAny * 1000.0 / total) / 10.0;
+
+            // 优先级计算（仅作徽章提示，不筛选）
+            String priority = "P2";
+            if (selfRate == 0 && compRate >= 50) priority = "P0";
+            else if (selfRate < 10 && compRate >= 50) priority = "P1";
+            else if (selfRate < 20 && compRate >= 30) priority = "P2";
+            else if (selfRate < 50) priority = "P2";
+            else priority = "-";
+
+            AnalysisReportResponse.GapTagItem it = new AnalysisReportResponse.GapTagItem();
+            it.setTagName(tag);
+            it.setLevel(tagToLevel.getOrDefault(tag, ""));
+            it.setSelfCoverage(selfRate);
+            it.setCompetitorCoverage(compRate);
+            it.setPriority(priority);
+            it.setQuestionCount(tagToQuestions.getOrDefault(tag, Collections.emptySet()).size());
+            it.setBrandCoverages(brandCoverages);
+            // 场景覆盖达标判定（统一口径：回答级 selfCoverage ≥ KPI 阈值）
+            it.setScenePassed(selfRate >= kpiThreshold * 100);
+            result.add(it);
+        }
+
+        // 排序：按自有覆盖率从低到高（最缺的排前面），最多 30 条
+        result.sort((a, b) -> Double.compare(a.getSelfCoverage(), b.getSelfCoverage()));
+        if (result.size() > 30) result = result.subList(0, 30);
+
+        log.info("  高价值覆盖缺口: {} 个标签进入清单", result.size());
+        return result;
+    }
+
+    /**
+     * 【模型对比 —— 各平台核心指标计算】
+     *
+     * 设计思路：
+     *   按 normalizeAiPlatformCode 归一化后分组，每个平台一行。
+     *   对每个平台的所有有效回答，计算自主品牌的：
+     *     coverRate     = 含品牌名的回答数 / 总回答数 × 100
+     *     firstRate     = 品牌名出现在回答开头的比例（分子=answerText前若干字里含品牌，分母=含品牌的回答数）
+     *     top3Rate      = 品牌名是该回答中前3个提及品牌之一的比例
+     *     avgRank       = 品牌在各回答中出现位置的平均排名（1=首位，未出现计 N+1）
+     *     stabilityRate = 品牌排名的一致性，1 - CV(rank的方差/均值)
+     */
+    private List<AnalysisReportResponse.PlatformCoreMetric> computePerPlatformMetrics(
+            List<TaskResult> validResults, String selfBrand, List<String> competitorBrands,
+            Map<Long, String> sentimentMap) {
+        List<AnalysisReportResponse.PlatformCoreMetric> result = new ArrayList<>();
+        if (validResults == null || validResults.isEmpty() || selfBrand == null || selfBrand.isEmpty()) return result;
+
+        // 所有品牌（自有 + 竞品），用于算 rank
+        List<String> allBrands = new ArrayList<>();
+        allBrands.add(selfBrand);
+        if (competitorBrands != null) {
+            for (String cb : competitorBrands) if (cb != null && !cb.isEmpty()) allBrands.add(cb);
+        }
+
+        // 按平台分组
+        Map<String, List<TaskResult>> byPlatform = new LinkedHashMap<>();
+        for (TaskResult r : validResults) {
+            if (!"SUCCESS".equals(r.getStatus())) continue;
+            String code = normalizeAiPlatformCode(r.getAiPlatform());
+            if (code != null) byPlatform.computeIfAbsent(code, k -> new ArrayList<>()).add(r);
+        }
+
+        // 平台 code → 显示名
+        Map<String, String> CODE_TO_NAME = new LinkedHashMap<>();
+        CODE_TO_NAME.put("doubao", "豆包");
+        CODE_TO_NAME.put("kimi", "Kimi");
+        CODE_TO_NAME.put("wenxin", "文心一言");
+        CODE_TO_NAME.put("deepseek", "DeepSeek");
+        CODE_TO_NAME.put("qianwen", "千问");
+        CODE_TO_NAME.put("yuanbao", "元宝");
+        CODE_TO_NAME.put("tencent", "元宝");
+
+        for (Map.Entry<String, List<TaskResult>> e : byPlatform.entrySet()) {
+            String code = e.getKey();
+            List<TaskResult> list = e.getValue();
+            int totalAnswers = list.size();
+            int mentionCount = 0;
+            int firstCount = 0;
+            int top3Count = 0;
+            int positiveCount = 0;
+            List<Integer> ranks = new ArrayList<>();
+            Map<Long, String> sentMap = sentimentMap != null ? sentimentMap : new HashMap<>();
+
+            for (TaskResult r : list) {
+                String ans = r.getAnswerText() != null ? r.getAnswerText() : "";
+                boolean selfMentioned = containsBrandName(ans, selfBrand);
+                if (!selfMentioned) {
+                    // 品牌未出现 → rank = 竞品数 + 1（惩罚性排名）
+                    ranks.add(allBrands.size() + 1);
+                    continue;
+                }
+                mentionCount++;
+                // 情感只在品牌被提及的回答中计算
+                String sent = sentMap.get(r.getId());
+                log.debug("  平台={} resultId={} selfMentioned=true sentiment={}", code, r.getId(), sent);
+                if ("positive".equalsIgnoreCase(sent)) positiveCount++;
+                // 找品牌在 answerText 中的第一次出现位置
+                int selfIdx = ans.toLowerCase().indexOf(selfBrand.toLowerCase());
+
+                // 算所有品牌在 ans 中第一次出现的位置，排序得到 rank
+                List<Integer> posList = new ArrayList<>();
+                for (String b : allBrands) {
+                    int pos = ans.toLowerCase().indexOf(b.toLowerCase());
+                    if (pos >= 0) posList.add(pos);
+                    else posList.add(Integer.MAX_VALUE); // 未出现的排到最后
+                }
+                Collections.sort(posList);
+                int rank = 1;
+                for (Integer p : posList) {
+                    if (p == Integer.MAX_VALUE) break;
+                    if (p == selfIdx) break;
+                    rank++;
+                }
+                ranks.add(rank);
+
+                // 首位：rank == 1
+                if (rank == 1) firstCount++;
+                // TOP3：rank <= 3
+                if (rank <= 3) top3Count++;
+            }
+
+            double coverRate = totalAnswers > 0 ? Math.round(mentionCount * 1000.0 / totalAnswers) / 10.0 : 0;
+            double firstRate = mentionCount > 0 ? Math.round(firstCount * 1000.0 / mentionCount) / 10.0 : 0;
+            double top3Rate = mentionCount > 0 ? Math.round(top3Count * 1000.0 / mentionCount) / 10.0 : 0;
+
+            // avgRank + stabilityRate (CV-based consistency)
+            double mean = ranks.stream().mapToInt(Integer::intValue).average().orElse(0);
+            double variance = ranks.stream().mapToDouble(d -> (d - mean) * (d - mean)).average().orElse(0);
+            double std = Math.sqrt(variance);
+            double stabilityRate = mean > 0 ? Math.max(0, Math.round((1 - std / mean) * 1000.0) / 10.0) : 0;
+
+            AnalysisReportResponse.PlatformCoreMetric row = new AnalysisReportResponse.PlatformCoreMetric();
+            row.setPlatformCode(code);
+            row.setPlatformName(CODE_TO_NAME.getOrDefault(code, code));
+            row.setTotalAnswers(totalAnswers);
+            row.setCoverRate(coverRate);
+            row.setFirstRate(firstRate);
+            row.setTop3Rate(top3Rate);
+            row.setAvgRank(Math.round(mean * 10) / 10.0);
+            row.setStabilityRate(stabilityRate);
+            double positiveRate = mentionCount > 0 ? Math.round(positiveCount * 1000.0 / mentionCount) / 10.0 : 0;
+            row.setPositiveRate(positiveRate);
+            log.info("  平台={} total={} mention={} positiveCount={} positiveRate={}% sentimentMapSize={}", code, totalAnswers, mentionCount, positiveCount, positiveRate, sentMap.size());
+            result.add(row);
+        }
+
+        log.info("  各平台核心指标: {} 个平台", result.size());
+        return result;
+    }
+
+    /**
+     * 【模型对比 —— 顶部三张 KPI 卡片】
+     *
+     * 设计思路：
+     *   1. 覆盖最高平台   = coverRate 最高的那个平台
+     *   2. 首位率最高平台 = firstRate 最高的那个平台
+     *   3. 最稳定平台     = stabilityRate 最高的那个平台
+     */
+    private List<AnalysisReportResponse.TopPlatformCard> buildTopPlatformCards(
+            List<AnalysisReportResponse.PlatformCoreMetric> metrics) {
+        List<AnalysisReportResponse.TopPlatformCard> cards = new ArrayList<>();
+        if (metrics == null || metrics.isEmpty()) return cards;
+
+        AnalysisReportResponse.PlatformCoreMetric topCover = metrics.stream()
+                .max(Comparator.comparingDouble(AnalysisReportResponse.PlatformCoreMetric::getCoverRate)).orElse(null);
+        AnalysisReportResponse.PlatformCoreMetric topFirst = metrics.stream()
+                .max(Comparator.comparingDouble(AnalysisReportResponse.PlatformCoreMetric::getFirstRate)).orElse(null);
+        AnalysisReportResponse.PlatformCoreMetric topStable = metrics.stream()
+                .max(Comparator.comparingDouble(AnalysisReportResponse.PlatformCoreMetric::getStabilityRate)).orElse(null);
+
+        if (topCover != null) {
+            AnalysisReportResponse.TopPlatformCard c = new AnalysisReportResponse.TopPlatformCard();
+            c.setTitle("覆盖最高平台");
+            c.setPlatformName(topCover.getPlatformName());
+            c.setValue(topCover.getCoverRate());
+            c.setUnit("%");
+            c.setDesc("自然出现率");
+            cards.add(c);
+        }
+        if (topFirst != null) {
+            AnalysisReportResponse.TopPlatformCard c = new AnalysisReportResponse.TopPlatformCard();
+            c.setTitle("首位率最高平台");
+            c.setPlatformName(topFirst.getPlatformName());
+            c.setValue(topFirst.getFirstRate());
+            c.setUnit("%");
+            c.setDesc("首位率");
+            cards.add(c);
+        }
+        if (topStable != null) {
+            AnalysisReportResponse.TopPlatformCard c = new AnalysisReportResponse.TopPlatformCard();
+            c.setTitle("最稳定平台");
+            c.setPlatformName(topStable.getPlatformName());
+            c.setValue(topStable.getStabilityRate());
+            c.setUnit("%");
+            c.setDesc("排名一致性");
+            cards.add(c);
+        }
+        return cards;
+    }
+
 }

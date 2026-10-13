@@ -80,7 +80,7 @@ MESSAGES = r"""() => [...document.querySelectorAll('[data-message-id]')].map(m =
   const isUser=!!m.querySelector('[class*="send-msg-bubble"],[class*="user-bubble"]')||cls.includes('justify-end')||cls.includes('items-end')||!!m.querySelector('[class*="bg-"][class*="primary"]');
   if(!body||isUser)return null;
   const clean=s=>(s||'').replace(/\r/g,'').trim();
-  const stripAttrs=html=>(html||'').replace(/\s+(?:data-[\w-]+|style|class|id|role|tabindex|translate|contenteditable)="[^"]*"/g,' ').replace(/>\s+</g,'><').trim();
+  const stripAttrs=html=>(html||'').replace(/\s+(?:data-[\w-]+|class|id|role|tabindex|translate|contenteditable|on[\w-]+)="[^"]*"/g,' ').replace(/>\s+</g,'><').trim();
   const answerText=clean(body.innerText);
 
   const isBeforeBody=(el)=>el!==body&&!body.contains(el)&&!el.contains(body)&&(body.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING)===0;
@@ -330,25 +330,25 @@ def input_box(page):
     raise last_err if last_err else RuntimeError("未找到输入框")
 
 
-def ready(page):
-    """保证「能开始提问」：没验证码就返回输入框；有验证码就暂停等人处理。
+# def ready(page):
+#     """保证「能开始提问」：没验证码就返回输入框；有验证码就暂停等人处理。
 
-    设计思路（处理卡住的关键）：
-      1. 先 verify 检查是否弹验证码；
-      2. 没验证码 -> 尝试取输入框并点击聚焦，成功就返回；
-      3. 有验证码（或取不到输入框）-> 调 input() 阻塞等待，让用户去浏览器里
-         手动完成登录/验证，确认后再按 Enter 继续。
-    这样脚本遇到验证码不会陷入"反复点击失败"的死循环，而是把控制权交回给真人。
-    """
-    while True:
-        if not verify(page):
-            try:
-                box = input_box(page)
-                box.click(trial=True, timeout=3000)
-                return box
-            except Exception:
-                pass
-        input("请完成豆包登录/验证，确认输入框可用后按 Enter：")
+#     设计思路（处理卡住的关键）：
+#       1. 先 verify 检查是否弹验证码；
+#       2. 没验证码 -> 尝试取输入框并点击聚焦，成功就返回；
+#       3. 有验证码（或取不到输入框）-> 调 input() 阻塞等待，让用户去浏览器里
+#          手动完成登录/验证，确认后再按 Enter 继续。
+#     这样脚本遇到验证码不会陷入"反复点击失败"的死循环，而是把控制权交回给真人。
+#     """
+#     while True:
+#         if not verify(page):
+#             try:
+#                 box = input_box(page)
+#                 box.click(trial=True, timeout=3000)
+#                 return box
+#             except Exception:
+#                 pass
+#         input("请完成豆包登录/验证，确认输入框可用后按 Enter：")
 
 
 def expand(page, message_id):
@@ -407,7 +407,7 @@ def ask(page, question):
     for attempt in range(2):
         page.goto(URL, wait_until="domcontentloaded", timeout=60000)
         time.sleep(random.uniform(2, 5))
-        box = ready(page)
+        box = input_box(page)
         old = {m["id"] for m in messages(page)}
 
         try:
@@ -472,7 +472,7 @@ def ask(page, question):
             if attempt == 1:
                 raise
             log(f"{e}，请完成验证后重试当前问题")
-            ready(page)
+            input_box(page)
             time.sleep(20)
     raise RuntimeError("回答失败")
 
@@ -803,7 +803,8 @@ def main():
         human_wait(2, 5)
 
         # 等用户确认登录完成
-        ready(page)
+        # 等用户确认登录完成
+        # input("请确认登录完成后按 Enter：")
 
         # ===== 导出最新完整登录态（cookie + localStorage），写本地 + 推后端 =====
         _state_file = export_state(browser, profile_dir)

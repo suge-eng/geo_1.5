@@ -33,6 +33,9 @@ public class TaskSubmitRequest {
     @Size(max = 1000, message = "问题数量不能超过1000个")
     private List<String> questions;
 
+    /** 每个问题对应的意图词ID列表（与questions一一对应），用于展示层级/标签/关键词 */
+    private List<Long> wordIds;
+
     /** 任务标题，用户自定义 */
     @NotEmpty(message = "项目名称不能为空")
     @Size(max = 200, message = "标题长度不能超过200字符")
@@ -60,6 +63,9 @@ public class TaskSubmitRequest {
     /** 任务范围：LOCAL=普通任务（预留字段，未来扩展GLOBAL全局分析任务用） */
     private String scope = "LOCAL";
 
+    /** 所属项目ID，任务按项目隔离 */
+    private String projectId;
+
     /** 白名单URL列表（可选），RPA搜索引用来源时只统计这些域名的引用 */
     private List<String> whitelistUrls;
 
@@ -67,6 +73,8 @@ public class TaskSubmitRequest {
     public void setAiPlatforms(List<String> aiPlatforms) { this.aiPlatforms = aiPlatforms; }
     public List<String> getQuestions() { return questions; }
     public void setQuestions(List<String> questions) { this.questions = questions; }
+    public List<Long> getWordIds() { return wordIds; }
+    public void setWordIds(List<Long> wordIds) { this.wordIds = wordIds; }
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
     public String getBrandName() { return brandName; }
@@ -83,4 +91,6 @@ public class TaskSubmitRequest {
     public void setScope(String scope) { this.scope = scope; }
     public List<String> getWhitelistUrls() { return whitelistUrls; }
     public void setWhitelistUrls(List<String> whitelistUrls) { this.whitelistUrls = whitelistUrls; }
+    public String getProjectId() { return projectId; }
+    public void setProjectId(String projectId) { this.projectId = projectId; }
 }

@@ -257,7 +257,7 @@ def extract_thinking(page):
                     all.forEach(n => {
                         for (let i = n.attributes.length - 1; i >= 0; i--) {
                             const attr = n.attributes[i];
-                            if (attr.name === 'class' || attr.name === 'style' || attr.name === 'id' ||
+                            if (attr.name === 'class' || attr.name === 'id' ||
                                 attr.name.indexOf('on') === 0 || attr.name.indexOf('data-') === 0 ||
                                 attr.name.indexOf('aria-') === 0 || attr.name === 'role' ||
                                 attr.name === 'tabindex' || attr.name === 'contenteditable') {
@@ -324,7 +324,7 @@ def extract_answer(page):
                     all.forEach(n => {
                         for (let i = n.attributes.length - 1; i >= 0; i--) {
                             const attr = n.attributes[i];
-                            if (attr.name === 'class' || attr.name === 'style' || attr.name === 'id' ||
+                            if (attr.name === 'class' || attr.name === 'id' ||
                                 attr.name.indexOf('on') === 0 || attr.name.indexOf('data-') === 0 ||
                                 attr.name.indexOf('aria-') === 0 || attr.name === 'role' ||
                                 attr.name === 'tabindex' || attr.name === 'contenteditable') {

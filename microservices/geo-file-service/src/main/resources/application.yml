@@ -22,11 +22,11 @@ spring:
 
 # ===== MinIO 对象存储连接配置 =====
 minio:
-  endpoint: http://localhost:9002        # MinIO 服务地址（服务端内部访问用）
+  endpoint: http://localhost:9003        # MinIO 服务地址（服务端内部访问用）
   access-key: minioadmin                 # 访问密钥（账号）
   secret-key: minioadmin123              # 访问密钥（密码）
   bucket: geo-bucket                     # 文件存放的桶名
-  public-endpoint: http://172.27.64.1:9002  # 对外暴露的下载地址（前端/外部直接访问用）
+  public-endpoint: http://172.27.64.1:9003  # 对外暴露的下载地址（前端/外部直接访问用）
 
 # ===== 日志 =====
 logging:

@@ -2,6 +2,7 @@ package com.geo.service;
 
 import com.geo.common.BusinessException;
 import com.geo.common.ResultCode;
+import com.geo.entity.LexiconItem;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
@@ -84,6 +85,60 @@ public class ExcelParseService {
         } catch (IOException e) {
             log.error("解析Excel文件失败", e);
             throw new BusinessException(ResultCode.INTERNAL_ERROR, "解析Excel文件失败");
+        }
+    }
+
+    /**
+     * 【词库资料导入】
+     * 约定格式：第0行表头，3列依次为「意图」「核心场景」「标签」，从第1行开始读数据。
+     * 映射到 lexicon_item 表：意图→intent，核心场景→scenario，标签→tag。
+     */
+    public List<LexiconItem> parseLexiconFromExcel(MultipartFile file) {
+        validateFile(file);
+
+        List<LexiconItem> items = new ArrayList<>();
+
+        try (InputStream is = file.getInputStream()) {
+            Workbook workbook = createWorkbook(file, is);
+
+            Sheet sheet = workbook.getSheetAt(0);
+            if (sheet == null) {
+                throw new BusinessException(ResultCode.BAD_REQUEST, "Excel文件为空");
+            }
+
+            int firstDataRow = 1;
+            int lastRowNum = sheet.getLastRowNum();
+
+            for (int i = firstDataRow; i <= lastRowNum; i++) {
+                Row row = sheet.getRow(i);
+                if (row == null) continue;
+
+                String intent = getCellValueAsString(row.getCell(0));
+                String scenario = getCellValueAsString(row.getCell(1));
+                String tag = getCellValueAsString(row.getCell(2));
+
+                // 核心场景必填，意图和标签允许为空
+                if (scenario == null || scenario.trim().isEmpty()) continue;
+
+                LexiconItem item = new LexiconItem();
+                item.setIntent(intent == null ? "" : intent.trim());
+                item.setScenario(scenario.trim());
+                item.setTag(tag == null ? "" : tag.trim());
+                items.add(item);
+            }
+
+            workbook.close();
+
+            if (items.isEmpty()) {
+                throw new BusinessException(ResultCode.BAD_REQUEST, "Excel文件中没有找到有效的词库数据（核心场景列不能为空）");
+            }
+
+            log.info("从词库Excel文件解析出 {} 条数据", items.size());
+            return items;
+
+        } catch (IOException e) {
+            log.error("解析词库Excel文件失败", e);
+            throw new BusinessException(ResultCode.INTERNAL_ERROR, "解析词库Excel文件失败");
         }
     }
 

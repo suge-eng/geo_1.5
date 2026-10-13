@@ -25,7 +25,7 @@ spring:
   # ----- 数据库（MySQL）连接 -----
   datasource:
     # JDBC 连接串：localhost:3306 的 geo_backend 库，附带字符集/时区/SSL 等参数
-    url: jdbc:mysql://localhost:3307/geo_backend?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://localhost:3308/geo_backend?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: geo             # 数据库账号
     password: geo123          # 数据库密码
     driver-class-name: com.mysql.cj.jdbc.Driver  # MySQL 8 官方驱动
@@ -34,7 +34,7 @@ spring:
   data:
     redis:
       host: localhost         # Redis 地址
-      port: 6380              # Redis 端口（本系统统一用 6380，避开默认 6379）
+      port: 6381              # Redis 端口（本系统统一用 6381，避开默认 6379）
       password: "123456"      # Redis 密码（用引号包住，避免被误判为数字）
       timeout: 10s            # Redis 命令超时时间
 
@@ -64,6 +64,38 @@ geo:
     timeout:
       check-interval-seconds: 30   # 任务超时检查的轮询间隔（秒）
       timeout-minutes: 720         # 任务整体超时阈值（分钟）= 12 小时
+  ai:
+    # 调用大模型生成关键词所需的密钥与接口地址（阿里云百炼 DashScope 的 OpenAI 兼容接口）
+    api-key: sk-34fbbe6fb8c94c41adb9990396b6c636
+    api-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1
+    model: deepseek-v4.1-flash      # 使用的模型名称
+    timeout-seconds: 120                # 单次 AI 请求超时（秒）
+    enabled: true                       # AI 能力总开关
+    # AI 拓展提示词模板：{level} {scene} {tag} 会被替换为用户填写的内容
+    # 用户后续可在此处替换为自定义提示词
+    expand-prompt: |
+      你是一个专业的营销关键词拓展助手。你是一名 GEO（Generative Engine Optimization，生成式引擎优化）领域的用户搜索意图分析师，
+      熟悉中文用户（尤其医疗健康等垂直领域）的真实搜索行为。你的任务是根据给定的
+      【意图层级】【核心场景】【意图标签】，批量拓展高质量、可直接入库的关键词。
+      请根据以下信息生成 12-16 个用户真实会搜索的关键词/词组：
+      - 意图层级：{level}
+      - 核心场景：{scene}
+      - 意图标签：{tag}
+
+      重要要求（必须严格遵守）：
+      1. 词型多样：核心短词（2~6 字）、长尾词、疑问句式混合生成，
+         符合真实中文搜索习惯，自然口语化优先，避免书面语堆砌与生僻词。
+      2. 关键词应贴近用户在该场景下的真实搜索词，例如场景是「毛囊炎」时，输出应类似「痘痘红肿」「毛孔发炎」「头皮毛囊炎」「毛囊炎用什么药」这类词组
+      3. 长度以 2-10 个字为主，最多不超过 15 个字
+      4. 不要重复，不要包含特殊符号，不要加序号
+      5. 只输出 JSON 格式，不要任何解释文字
+      6. 合规红线：严禁生成夸大医疗效果词（如"根治""神药"）、绝对化用语（如"最有效"）
+         及任何违反广告法的表述；涉及疾病不得生成承诺疗效类词汇。
+      7. 语义对齐：关键词须同时扣住"核心场景"与"意图标签"的语义，三者一致，
+         不得偏离意图标签所限定的细分意图。
+      
+      输出格式示例：
+      {"keywords": ["关键词1", "关键词2", "关键词3"]}
 
 # ===== 日志级别 =====
 logging:

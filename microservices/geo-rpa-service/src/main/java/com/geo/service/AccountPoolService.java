@@ -49,8 +49,8 @@ public class AccountPoolService {
 
     private static final Logger log = LoggerFactory.getLogger(AccountPoolService.class);
 
-    /** 默认冷却时长（分钟）—— 用户需求：每个账号冷却 10 分钟 */
-    private static final int DEFAULT_COOLDOWN_MINUTES = 10;
+    /** 默认冷却时长（分钟）—— 用户需求：每个账号冷却 5 分钟 */
+    private static final int DEFAULT_COOLDOWN_MINUTES = 5;
 
     /** 账号被 worker 持有超过这个时间且该 worker 没 RUNNING 单元 → 释放 */
     private static final long OFFLINE_CLEANUP_MINUTES = 10;
