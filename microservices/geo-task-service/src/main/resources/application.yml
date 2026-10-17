@@ -66,7 +66,7 @@ geo:
       timeout-minutes: 720         # 任务整体超时阈值（分钟）= 12 小时
   ai:
     # 调用大模型生成关键词所需的密钥与接口地址（阿里云百炼 DashScope 的 OpenAI 兼容接口）
-    api-key: sk-34fbbe6fb8c94c41adb9990396b6c636
+    api-key: sk-ws-H.PPPLDHY.EE3y.MEUCIDpLG-qtEpaB810-RbS1cJOtkIV6F5ontUqQnw6DO65ZAiEA7nJg9pSRLirFZla-Y9-YdcxzfXYk9GU866ATfh_MbsY
     api-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1
     model: deepseek-v4.1-flash      # 使用的模型名称
     timeout-seconds: 120                # 单次 AI 请求超时（秒）

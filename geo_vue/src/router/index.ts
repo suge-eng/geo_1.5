@@ -48,6 +48,16 @@ const PROJECT_CHILDREN: RouteRecordRaw[] = [
     meta: { title: '数据分析', group: 'monitor' }
   },
   {
+    // 舆情类型任务的数据报告（数据总览 / 媒体来源 两个模块）。
+    // 舆情任务功能尚未开发完成，暂以独立路由方式访问：
+    //   /project/:projectId/monitor/sentiment-report?taskNo=xxx&module=overview|media
+    // 后续舆情模块就绪后，由任务入口按任务类型自动进入本页。
+    path: 'monitor/sentiment-report',
+    name: 'SentimentReport',
+    component: () => import('@/views/monitor/analysis/SentimentReport.vue'),
+    meta: { title: '舆情数据报告', group: 'monitor' }
+  },
+  {
     path: 'monitor/blindspot',
     name: 'BlindSpotAnalysis',
     component: () => import('@/views/monitor/blindspot/BlindSpotAnalysis.vue'),

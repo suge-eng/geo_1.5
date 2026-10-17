@@ -1,4 +1,7 @@
-﻿/** 任务实体（与后端 Task + enrichTaskFields 回填字段一致） */
+﻿/** 监测目标类型：声量 / 舆情 */
+export type MonitorTarget = 'volume' | 'sentiment'
+
+/** 任务实体（与后端 Task + enrichTaskFields 回填字段一致） */
 export interface Task {
   id: number
   taskNo: string
@@ -27,6 +30,12 @@ export interface Task {
   projectId?: string
   questionCount?: number
   intentCount?: number
+  /**
+   * 监测目标：声量 / 舆情。
+   * 后端暂未持久化该字段（舆情任务功能尚在开发），前端以 utils/taskType.ts 的
+   * 本地记录兜底；后端就绪后返回该字段即自动以它为准。
+   */
+  monitorTarget?: MonitorTarget
 }
 
 /** 创建任务入参（手动 JSON） */
@@ -43,6 +52,8 @@ export interface TaskSubmitRequest {
   scope?: string
   projectId?: string
   whitelistUrls?: string[] | null
+  /** 监测目标：声量 / 舆情（后端就绪前为前向兼容字段） */
+  monitorTarget?: MonitorTarget
 }
 
 /** 任务进度 */

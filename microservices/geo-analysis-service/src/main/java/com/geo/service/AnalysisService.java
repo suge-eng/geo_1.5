@@ -2,7 +2,9 @@ package com.geo.service;
 
 import com.geo.common.BusinessException;
 import com.geo.common.ResultCode;
+import com.geo.common.SentimentUtils;
 import com.geo.dto.AnalysisReportResponse;
+import com.geo.service.analysis.SourceStructureComputer;
 import com.geo.dto.AnalysisReportResponse.*;
 import com.geo.entity.Task;
 import com.geo.entity.TaskReport;
@@ -584,6 +586,13 @@ public class AnalysisService {
         double _sceneRate = _totalTags > 0 ? Math.round(_passedTags * 1000.0 / _totalTags) / 10.0 : -1;
         exposureMetrics.setSceneCoverageRate(_sceneRate);
         log.info("  场景覆盖率(统一口径回答级): {} / {} = {}%", _passedTags, _totalTags, _sceneRate);
+
+        // 品牌信息来源结构：域名 → 规则表 → Redis 缓存 → AI 分类
+        t0 = System.currentTimeMillis();
+        SourceStructureComputer ssc = new SourceStructureComputer(redisTemplate, objectMapper,
+                aiApiKey, aiApiEndpoint, aiModel, aiEnabled);
+        report.setSourceStructure(ssc.compute(validResults, selfBrand));
+        log.info("  computeSourceStructure 耗时={}ms", System.currentTimeMillis() - t0);
 
         log.info("开始 JSON 序列化...");
         t0 = System.currentTimeMillis();
@@ -3917,6 +3926,7 @@ public class AnalysisService {
                 mentionCount++;
                 // 情感只在品牌被提及的回答中计算
                 String sent = sentMap.get(r.getId());
+                if (sent == null) sent = SentimentUtils.analyzeBrandSentiment(ans, selfBrand);
                 log.debug("  平台={} resultId={} selfMentioned=true sentiment={}", code, r.getId(), sent);
                 if ("positive".equalsIgnoreCase(sent)) positiveCount++;
                 // 找品牌在 answerText 中的第一次出现位置

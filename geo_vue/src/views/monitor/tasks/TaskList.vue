@@ -193,6 +193,7 @@ import StatusTag from '@/components/StatusTag.vue'
 import { AI_PLATFORMS, FREQUENCY_MAP } from '@/types/enums'
 import { formatDateTime } from '@/utils/format'
 import { projectPath } from '@/utils/projectPath'
+import { isSentimentTask } from '@/utils/taskType'
 import {
   listTasks,
   getResults,
@@ -349,7 +350,9 @@ function goCreate() {
 }
 
 function openHistory(task: Task) {
-  router.push({ path: projectPath(projectId.value, 'monitor/analysis'), query: { taskNo: task.taskNo } })
+  // 舆情类型任务 → 两模块报告（数据总览 / 媒体来源）；声量类型 → 原四模块报告
+  const path = isSentimentTask(task) ? 'monitor/sentiment-report' : 'monitor/analysis'
+  router.push({ path: projectPath(projectId.value, path), query: { taskNo: task.taskNo } })
 }
 
 function canShowHistory(task: Task): boolean {

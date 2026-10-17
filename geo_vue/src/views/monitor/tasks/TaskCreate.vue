@@ -504,6 +504,8 @@ import { listLexicon, listIntentQuestions, listEnabledIntentWords } from '@/api/
 import type { LexiconItem } from '@/mock/config'
 import type { IntentQuestion, IntentWord } from '@/mock/intenLibrary'
 import { USE_MOCK } from '@/mock/flag'
+import { setTaskMonitorTarget } from '@/utils/taskType'
+import type { MonitorTarget } from '@/types/task'
 
 const route = useRoute()
 const router = useRouter()
@@ -518,7 +520,7 @@ const taskListPath = computed(() => projectPath(projectId.value, 'monitor/tasks'
 // ---------- 表单（必须在引用它的 computed/watch 之前声明） ----------
 const form = reactive({
   title: '',
-  monitorTarget: 'volume',
+  monitorTarget: 'volume' as MonitorTarget,
   level: '',
   intentTag: '',
   brandName: '',
@@ -764,7 +766,7 @@ async function onSubmit() {
 
   submitting.value = true
   try {
-    await createTask({
+    const created = await createTask({
       aiPlatforms: platforms,
       questions,
       wordIds,
@@ -774,8 +776,11 @@ async function onSubmit() {
       competitors,
       executionFrequency: form.frequency,
       scope: 'LOCAL',
-      projectId: projectId.value || ''
+      projectId: projectId.value || '',
+      monitorTarget: form.monitorTarget
     })
+    // 后端暂未持久化监测目标，先本地记录，供报告页按任务类型分流（声量/舆情）
+    setTaskMonitorTarget(created?.taskNo, form.monitorTarget)
     ElMessage.success('任务创建成功')
     router.push(taskListPath.value)
   } catch {

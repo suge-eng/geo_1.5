@@ -1135,4 +1135,46 @@ public class AnalysisReportResponse {
     public List<TopPlatformCard> getTopPlatformCards() { return topPlatformCards; }
     public void setTopPlatformCards(List<TopPlatformCard> topPlatformCards) { this.topPlatformCards = topPlatformCards; }
 
+    /** 品牌信息来源结构：AI 回答引用来源的 5 类分布 */
+    private SourceStructure sourceStructure;
+    public SourceStructure getSourceStructure() { return sourceStructure; }
+    public void setSourceStructure(SourceStructure sourceStructure) { this.sourceStructure = sourceStructure; }
+
+    /**
+     * 品牌信息来源结构：5 类来源（官网/行业媒体/电商平台/内容平台/其他）的引用次数 + 占比
+     * 数据来源：TaskResult.sourceInfo 里 AI 回答的引用链接 → 域名提取 → 规则表/AI 分类
+     */
+    public static class SourceStructure {
+        /** 总有效来源次数（所有引用条目数，不按域名去重） */
+        private int totalCount;
+        /** 5 类分类项（固定 5 行，前端横向条形图直接渲染） */
+        private List<SourceCategoryItem> categories;
+
+        public int getTotalCount() { return totalCount; }
+        public void setTotalCount(int totalCount) { this.totalCount = totalCount; }
+        public List<SourceCategoryItem> getCategories() { return categories; }
+        public void setCategories(List<SourceCategoryItem> categories) { this.categories = categories; }
+    }
+
+    /** 单个来源分类项 */
+    public static class SourceCategoryItem {
+        /** 分类名称：官网 / 行业媒体 / 电商平台 / 内容平台 / 其他来源 */
+        private String name;
+        /** 该分类的引用次数 */
+        private int count;
+        /** 占比（%，保留 1 位小数） */
+        private double rate;
+
+        public SourceCategoryItem() {}
+        public SourceCategoryItem(String name, int count, double rate) {
+            this.name = name; this.count = count; this.rate = rate;
+        }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public int getCount() { return count; }
+        public void setCount(int count) { this.count = count; }
+        public double getRate() { return rate; }
+        public void setRate(double rate) { this.rate = rate; }
+    }
+
 }

@@ -68,6 +68,12 @@ public class ApiProxyController {
         return doProxy(request, ANALYSIS_SERVICE);
     }
 
+    // /api/sentiment/** -> 分析服务（舆情报告，由分析服务承载）
+    @RequestMapping(value = "/api/sentiment/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.PATCH})
+    public ResponseEntity<byte[]> proxySentiment(HttpServletRequest request) {
+        return doProxy(request, ANALYSIS_SERVICE);
+    }
+
     // /api/file/** -> 文件服务
     @RequestMapping(value = "/api/file/**", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.PATCH})
     public ResponseEntity<byte[]> proxyFile(HttpServletRequest request) {

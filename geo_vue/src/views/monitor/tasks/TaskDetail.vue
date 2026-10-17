@@ -254,6 +254,7 @@ import { RESULT_STATUS_MAP, SENTIMENT_MAP, platformLabel } from '@/types/enums'
 import { formatDateTime, formatDateTimeDot, parseSourceInfo } from '@/utils/format'
 import { renderMarkdown } from '@/utils/markdown'
 import { projectPath } from '@/utils/projectPath'
+import { isSentimentTask } from '@/utils/taskType'
 import { useTaskStore } from '@/store/task'
 import { getTask, getProgress, getResults, getRankings, retryResult, deleteResult, batchDeleteResults } from '@/api/task'
 import { EMPTY_MOCK_FIELDS, MOCK_LEVELS, mockFieldsFor } from '@/mock'
@@ -393,7 +394,12 @@ async function onBatchDelete() {
 
 function onBatchExecute() { if (!selectedIds.value.length) return ElMessage.warning('请先勾选要执行的询问句'); ElMessage.info(`已选中 ${selectedIds.value.length} 条，批量执行接口待后端提供`) }
 function onExportReport() { ElMessage.info('导出报告接口待后端提供') }
-function goReport() { taskStore.setCurrentTask(currentTask.value); router.push({ path: projectPath(projectId, 'monitor/analysis'), query: { taskNo } }) }
+function goReport() {
+  // 舆情类型任务 → 两模块报告（数据总览 / 媒体来源）；声量类型 → 原四模块报告
+  const path = isSentimentTask(currentTask.value) ? 'monitor/sentiment-report' : 'monitor/analysis'
+  taskStore.setCurrentTask(currentTask.value)
+  router.push({ path: projectPath(projectId, path), query: { taskNo } })
+}
 function goBack() { router.push(projectPath(projectId, 'monitor/tasks')) }
 
 function exportCsv(includeNetwork: boolean) {

@@ -836,3 +836,17 @@ export {
   LEXICON_IMPORT_MAX_SIZE
 } from './config'
 export type { IntentDefinition, LexiconItem } from './config'
+
+/* ------------------------- 舆情数据报告 ------------------------- */
+
+/**
+ * 舆情类型任务的数据报告（数据总览 / 媒体来源）虚拟数据。
+ *
+ * 数据量较大，单独放在 ./sentimentReport；由 ./flag 的 USE_SENTIMENT_MOCK 控制启停。
+ */
+export {
+  SENTIMENT_REPORT_META,
+  SENTIMENT_MODULES,
+  SENTIMENT_OVERVIEW_DATA,
+  MEDIA_SOURCE_DATA
+} from './sentimentReport'

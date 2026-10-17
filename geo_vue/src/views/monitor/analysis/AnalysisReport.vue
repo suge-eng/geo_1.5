@@ -89,17 +89,38 @@
           </section>
 
           <section class="card">
-            <div class="card-title">{{ overview.intentHeatmap.title }}</div>
+            <div class="card-title">
+              {{ overview.intentHeatmap.title }}
+              <span class="card-hint">各品牌在认知、种草、甄选、决策、反馈五级意图中的自然出现率</span>
+            </div>
             <div class="table-scroll">
               <table class="heat-table">
-                <thead><tr><th class="heat-row-head"></th><th v-for="c in overview.intentHeatmap.cols" :key="c">{{ c }}</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th class="heat-row-head"></th>
+                    <th
+                      v-for="(c, ci) in overview.intentHeatmap.cols"
+                      :key="ci"
+                      class="heat-col-head"
+                    >
+                      {{ c }}
+                    </th>
+                  </tr>
+                </thead>
                 <tbody>
                   <tr v-for="(r, ri) in overview.intentHeatmap.rows" :key="ri">
                     <td class="heat-row-head">{{ r.name }}</td>
-                    <td v-for="(v, ci) in r.values" :key="ci" class="bar-cell">
+                    <td
+                      v-for="(c, ci) in overview.intentHeatmap.cols"
+                      :key="ci"
+                      class="bar-cell"
+                    >
                       <div class="progress-bg">
-                        <div class="progress-bar" :style="{ background: getHeatStyle(v).background }" />
-                        <span class="progress-text">{{ v }}%</span>
+                        <div
+                          class="progress-bar"
+                          :style="{ background: getHeatStyle(r.values?.[ci] ?? 0).background }"
+                        />
+                        <span class="progress-text">{{ r.values?.[ci] ?? 0 }}%</span>
                       </div>
                     </td>
                   </tr>
@@ -156,9 +177,30 @@
             </div>
           </section>
 
+          <!-- 替换原 ECharts 热力图为 HTML 表格结构 -->
           <section class="card">
             <div class="card-title">{{ model.heatmap.title }}<span class="card-hint">各平台对话场景、知识、事实、多轮交互等层级中的痛点点击率</span></div>
-            <BaseChart :option="modelHeatmapOption" height="260px" />
+            <div class="table-scroll">
+              <table class="heat-table">
+                <thead>
+                  <tr>
+                    <th class="heat-row-head"></th>
+                    <th v-for="(c, ci) in modelHeatmapTable.cols" :key="ci" class="heat-col-head">{{ c }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(r, ri) in modelHeatmapTable.rows" :key="ri">
+                    <td class="heat-row-head">{{ r.name }}</td>
+                    <td v-for="(c, ci) in modelHeatmapTable.cols" :key="ci" class="bar-cell">
+                      <div class="progress-bg">
+                        <div class="progress-bar" :style="{ background: getModelHeatStyle(r.values[ci] ?? 0).background }" />
+                        <span class="progress-text">{{ r.texts[ci] ?? '-' }}</span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </section>
         </template>
 
@@ -321,7 +363,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
 import BaseChart from '@/components/BaseChart.vue'
-import { buildHBarOption, buildHeatmapOption, buildRadarOption, buildRingOption, buildStackedBarOption, type HeatmapCell } from '@/charts/options'
+import { buildHBarOption, buildRadarOption, buildRingOption, buildStackedBarOption } from '@/charts/options'
 import { formatDateTime, formatDateTimeDot } from '@/utils/format' // 新增 formatDateTimeDot
 import { getTask } from '@/api/task' // 新增 getTask 接口
 import { fetchReport } from '@/utils/report'
@@ -760,12 +802,45 @@ const modelTopCards = computed(() => {
 })
 
 const modelStructureOption = computed(() => buildStackedBarOption(model.value.structure.platforms, [{ name: '首位率', data: model.value.structure.first, color: '#4f80ff' }, { name: 'TOP2-3', data: model.value.structure.top23, color: '#ffb4a3' }, { name: '其他位置', data: model.value.structure.other, color: '#4caf50' }, { name: '未展现', data: model.value.structure.unshown, color: '#dcdfe6' }]))
-const NATURAL_LEVEL: Record<string, number> = { 较高: 92, 中等: 68, 偏低: 42, 待完善: 80 }
-const modelHeatmapOption = computed(() => {
-  const h = model.value.heatmap; const xData = h.items.map(i => i.platform); const cells: HeatmapCell[] = []
-  h.items.forEach((item, xi) => { cells.push({ value: [xi, 0, Math.round(item.coverRate ?? 0)], text: item.naturalCover }); cells.push({ value: [xi, 1, Math.round(item.emotional ?? 0)], text: item.emotional != null ? Math.round(item.emotional) + '%' : undefined }); cells.push({ value: [xi, 2, null] }) })
-  return buildHeatmapOption(xData, h.rows, cells)
+
+/** 模型对比 - 热力图表格数据映射（替代原 ECharts 热力图） */
+const modelHeatmapTable = computed(() => {
+  const h = model.value.heatmap
+  if (!h || !h.items || h.items.length === 0) return { cols: [], rows: [] }
+  const cols = h.items.map(i => i.platform)
+  const rows = [
+    {
+      name: '自然覆盖',
+      values: h.items.map(i => i.coverRate ?? 0),
+      texts: h.items.map(i => i.naturalCover ?? '-')
+    },
+    {
+      name: '舆情情况',
+      values: h.items.map(i => i.emotional ?? 0),
+      texts: h.items.map(i => (i.emotional != null ? i.emotional + '%' : '-'))
+    },
+    {
+      name: '官网引用',
+      values: h.items.map(i => 0),
+      texts: h.items.map(i => '-')
+    }
+  ]
+  return { cols, rows }
 })
+
+const modelHeatmapRange = computed(() => {
+  const all = modelHeatmapTable.value.rows.flatMap(r => r.values).filter(v => typeof v === 'number' && !isNaN(v))
+  if (!all.length) return { min: 0, max: 0 }
+  return { min: Math.min(...all), max: Math.max(...all) }
+})
+
+function getModelHeatStyle(value: number): { background: string; isLight: boolean } {
+  if (value === 0) return { background: 'transparent', isLight: true }
+  const { min, max } = modelHeatmapRange.value
+  if (max === min) return { background: 'hsl(228, 85%, 58%)', isLight: false }
+  const t = (value - min) / (max - min); const lightness = 78 - t * 40
+  return { background: `hsl(228, 85%, ${lightness.toFixed(1)}%)`, isLight: lightness > 62 }
+}
 
 const scenario = computed<ScenarioData>(() => (USE_MOCK ? SCENARIO_DATA : buildScenarioFromReport(backendReport.value)))
 const scenarioDemandOption = computed(() => buildHBarOption(scenario.value.demandRank.items))
@@ -785,7 +860,7 @@ function goDetail() { if (taskNo.value) router.push(projectPath(projectId, `moni
 function goBack() { router.push(taskListPath) }
 
 const heatmapRange = computed(() => {
-  const all = overview.value.intentHeatmap.rows.flatMap(r => r.values)
+  const all = overview.value.intentHeatmap.rows.flatMap(r => r.values ?? [])
   if (!all.length) return { min: 0, max: 0 }
   return { min: Math.min(...all), max: Math.max(...all) }
 })
@@ -930,15 +1005,85 @@ onUnmounted(() => { window.removeEventListener('click', closeTooltip) })
   /* 表格等 */
   .data-table { width: 100%; border-collapse: collapse; font-size: 13px; th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid #f0f0f0; } th { background: #fafafa; color: #888; font-weight: normal; font-size: 12px; } tr:last-child td { border-bottom: none; } }
   .table-scroll { max-height: 300px; overflow-y: auto; }
-  .heat-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .heat-table th, .heat-table td { padding: 8px 6px; border-bottom: 1px solid #f0f0f0; width: 130px; }
-  .heat-table th { background: #fafafa; color: #888; font-weight: normal; font-size: 12px; text-align: center; }
-  .heat-table td.bar-cell { text-align: center; }
-  .heat-row-head { width: 150px !important; color: #555; text-align: left !important; padding-left: 4px; }
-  .bar-cell { }
-  .progress-bg { position: relative; width: 110px; height: 26px; margin: 0 auto; border-radius: 4px; overflow: hidden; }
-  .progress-bar { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 4px; transition: background 0.3s; }
-  .progress-text { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; z-index: 1; font-size: 11px; font-weight: 600; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+
+  /* ---------------- 用户意图层级覆盖热力图 ---------------- */
+  /* 品牌列固定宽度，层级列等分剩余宽度，严格按 cols 顺序从左到右排列 */
+  .heat-table {
+    width: 100%;
+    table-layout: fixed;      /* 关键：列宽可控，不再被内容撑开 */
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .heat-table th,
+  .heat-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    text-align: center;
+    vertical-align: middle;
+  }
+  .heat-table thead th {
+    background: #fafafa;
+    color: #333;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  /* 品牌名首列：固定宽度、左对齐、浅灰底 */
+  .heat-table .heat-row-head {
+    width: 180px;
+    text-align: left;
+    font-weight: 500;
+    color: #333;
+    background: #f5f6f8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* 表头首列（空白单元格）不要底色 */
+  .heat-table thead .heat-row-head {
+    background: transparent;
+  }
+  /* 层级列头：由 table-layout:fixed 自动等分剩余宽度，按顺序从左往右排 */
+  .heat-col-head {
+    /* 无需固定宽度 */
+  }
+  .heat-table td.bar-cell {
+    padding: 8px 12px;
+  }
+  /* 进度条：铺满所在单元格，形成参考图的整条色块 */
+  .progress-bg {
+    position: relative;
+    width: 100%;
+    height: 30px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #f2f4f8;
+  }
+  .progress-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 4px;
+    transition: background 0.3s;
+  }
+  .progress-text {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  }
+
+  /* 其他表格 */
   .td-wrap { min-width: 120px; font-size: 11px; color: #555; word-break: break-all; }
   .td-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; &.badge-high { background: #e6f4ea; color: #1e8e3e; } &.badge-mid { background: #fef7e0; color: #b08800; } }
   .rank-tag { display: inline-block; min-width: 24px; padding: 2px 8px; border-radius: 4px; background: #f5f5f5; color: #333; font-size: 12px; text-align: center; margin-right: 6px; &.top { background: #e6f4ff; color: var(--primary-color); } }
